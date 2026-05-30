@@ -387,6 +387,10 @@ export function ThreadList({
                       !threadHistory!.currentThreadId;
                     const isSelected =
                       isResumed || threadHistory!.currentThreadId === thread.id;
+                    const projectId = thread.metadata?.project_id;
+                    const targetPath = projectId
+                      ? `/workspace/${projectId}/thread/${thread.id}`
+                      : `/thread/${thread.id}`;
                     return (
                       <SidebarMenuItem
                         key={thread.id}
@@ -394,7 +398,7 @@ export function ThreadList({
                       >
                         <Tooltip>
                           <TooltipTrigger asChild>
-                            <Link to={isResumed ? '' : `/thread/${thread.id}`}>
+                            <Link to={isResumed ? '' : targetPath}>
                               <SidebarMenuButton
                                 isActive={isSelected}
                                 className="relative h-9 group/thread"

@@ -1,7 +1,14 @@
 import getRouterBasename from '@/lib/router';
 import { toast } from 'sonner';
 
-import { ChainlitAPI, ClientError } from '@chainlit/react-client';
+import {
+  ChainlitAPI,
+  ClientError,
+  IPageInfo,
+  IPagination,
+  IThread,
+  IThreadFilters
+} from '@chainlit/react-client';
 
 const devServer =
   (import.meta.env.VITE_API_URL || 'http://localhost:8000') +
@@ -24,7 +31,86 @@ const onError = (error: ClientError) => {
   toast.error(error.toString());
 };
 
+export type InEverySceneType =
+  | 'code'
+  | 'notebook'
+  | 'video-generate'
+  | '3d-art-generate'
+  | 'writing';
+
+export interface InEveryProject {
+  id: string;
+  threadId: string;
+  name: string;
+  scene: InEverySceneType;
+  config: Record<string, unknown>;
+  createdAt: string;
+  updatedAt: string;
+  userId?: string;
+  userIdentifier?: string;
+}
+
+export interface CreateInEveryProjectPayload {
+  name: string;
+  scene: InEverySceneType;
+  config?: Record<string, unknown>;
+}
+
+function getWorkspaceProjectId() {
+  const match = window.location.pathname.match(/\/workspace\/([^/?#]+)/);
+  return match ? decodeURIComponent(match[1]) : undefined;
+}
+
 class ExtendedChainlitAPI extends ChainlitAPI {
+  async listThreads(
+    pagination: IPagination,
+    filter: IThreadFilters
+  ): Promise<{
+    pageInfo: IPageInfo;
+    data: IThread[];
+  }> {
+    const projectId = getWorkspaceProjectId();
+    const payload: {
+      pagination: IPagination;
+      filter: IThreadFilters;
+      projectId?: string;
+    } = { pagination, filter };
+
+    if (projectId) {
+      payload.projectId = projectId;
+    }
+
+    const res = await this.post(`/project/threads`, payload);
+
+    return res.json();
+  }
+
+  async listInEveryProjects(): Promise<InEveryProject[]> {
+    const res = await this.get(`/inevery/projects`);
+    const payload = await res.json();
+    return payload.data || [];
+  }
+
+  async createInEveryProject(
+    payload: CreateInEveryProjectPayload
+  ): Promise<InEveryProject> {
+    const res = await this.post(`/inevery/projects`, payload);
+    return res.json();
+  }
+
+  async getInEveryProject(projectId: string): Promise<InEveryProject> {
+    const res = await this.get(`/inevery/projects/${projectId}`);
+    return res.json();
+  }
+
+  async updateInEveryProject(
+    projectId: string,
+    payload: Partial<CreateInEveryProjectPayload>
+  ): Promise<InEveryProject> {
+    const res = await this.put(`/inevery/projects/${projectId}`, payload);
+    return res.json();
+  }
+
   async shareThread(
     threadId: string,
     isShared: boolean

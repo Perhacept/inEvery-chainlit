@@ -93,8 +93,19 @@ const NewChatButton = ({ navigate, onConfirm, ...buttonProps }: Props) => {
     if (onConfirm) {
       onConfirm();
     } else {
-      clear();
-      navigate?.('/');
+      const workspaceMatch = window.location.pathname.match(
+        /\/workspace\/([^/?#]+)/
+      );
+      if (workspaceMatch) {
+        clear();
+        const projectId = encodeURIComponent(
+          decodeURIComponent(workspaceMatch[1])
+        );
+        navigate?.(`/workspace/${projectId}/new?newChat=${Date.now()}`);
+      } else {
+        clear();
+        navigate?.('/');
+      }
     }
     handleClose();
   };

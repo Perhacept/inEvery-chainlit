@@ -4,15 +4,28 @@ import { Navigate, createBrowserRouter } from 'react-router-dom';
 import AuthCallback from 'pages/AuthCallback';
 import Element from 'pages/Element';
 import Env from 'pages/Env';
-import Home from 'pages/Home';
 import Login from 'pages/Login';
+import Playground from 'pages/Playground';
 import Thread from 'pages/Thread';
+import Workspace from 'pages/Workspace';
 
 export const router = createBrowserRouter(
   [
     {
       path: '/',
-      element: <Home />
+      element: <Playground />
+    },
+    {
+      path: '/workspace/:projectId',
+      element: <Workspace />
+    },
+    {
+      path: '/workspace/:projectId/new',
+      element: <Workspace />
+    },
+    {
+      path: '/workspace/:projectId/thread/:threadId',
+      element: <Workspace />
     },
     {
       path: '/env',

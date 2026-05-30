@@ -881,6 +881,125 @@ async def project_settings(
     )
 
 
+def _require_inevery_data_layer():
+    data_layer = get_data_layer()
+
+    if not data_layer:
+        raise HTTPException(status_code=400, detail="Data persistence is not enabled")
+
+    return data_layer
+
+
+def _require_inevery_user(current_user: UserParam):
+    if not current_user:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+    return current_user
+
+
+@router.get("/inevery/projects")
+async def list_inevery_projects(current_user: UserParam):
+    """List local JSON projects for the authenticated user."""
+
+    user = _require_inevery_user(current_user)
+    data_layer = _require_inevery_data_layer()
+
+    if not hasattr(data_layer, "list_projects"):
+        raise HTTPException(status_code=400, detail="Project persistence is not enabled")
+
+    projects = await data_layer.list_projects(user.identifier)
+    return JSONResponse(content={"data": projects})
+
+
+@router.post("/inevery/projects")
+async def create_inevery_project(request: Request, current_user: UserParam):
+    """Create a local JSON project and its fixed Chainlit thread."""
+
+    user = _require_inevery_user(current_user)
+    data_layer = _require_inevery_data_layer()
+
+    if not hasattr(data_layer, "create_project"):
+        raise HTTPException(status_code=400, detail="Project persistence is not enabled")
+
+    payload = await request.json()
+    name = str(payload.get("name") or "").strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Project name is required")
+
+    scene = str(payload.get("scene") or "code")
+    config_payload = payload.get("config") if isinstance(payload.get("config"), dict) else {}
+
+    project = await data_layer.create_project(
+        user.identifier,
+        name=name,
+        scene=scene,
+        config=config_payload,
+    )
+    return JSONResponse(content=project)
+
+
+@router.get("/inevery/projects/{project_id}")
+async def get_inevery_project(project_id: str, current_user: UserParam):
+    """Get one local JSON project for the authenticated user."""
+
+    user = _require_inevery_user(current_user)
+    data_layer = _require_inevery_data_layer()
+
+    if not hasattr(data_layer, "get_project"):
+        raise HTTPException(status_code=400, detail="Project persistence is not enabled")
+
+    project = await data_layer.get_project(user.identifier, project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    return JSONResponse(content=project)
+
+
+@router.put("/inevery/projects/{project_id}")
+async def update_inevery_project(
+    project_id: str,
+    request: Request,
+    current_user: UserParam,
+):
+    """Update local JSON project metadata."""
+
+    user = _require_inevery_user(current_user)
+    data_layer = _require_inevery_data_layer()
+
+    if not hasattr(data_layer, "update_project"):
+        raise HTTPException(status_code=400, detail="Project persistence is not enabled")
+
+    payload = await request.json()
+    project = await data_layer.update_project(
+        user.identifier,
+        project_id,
+        name=payload.get("name"),
+        scene=payload.get("scene"),
+        config=payload.get("config") if isinstance(payload.get("config"), dict) else None,
+    )
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    return JSONResponse(content=project)
+
+
+@router.delete("/inevery/projects/{project_id}")
+async def delete_inevery_project(project_id: str, current_user: UserParam):
+    """Delete a local JSON project and its fixed Chainlit thread."""
+
+    user = _require_inevery_user(current_user)
+    data_layer = _require_inevery_data_layer()
+
+    if not hasattr(data_layer, "delete_project"):
+        raise HTTPException(status_code=400, detail="Project persistence is not enabled")
+
+    deleted = await data_layer.delete_project(user.identifier, project_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    return JSONResponse(content={"success": True})
+
+
 @router.put("/feedback")
 async def update_feedback(
     request: Request,
@@ -958,7 +1077,21 @@ async def get_user_threads(
     else:
         payload.filter.userId = current_user.id
 
-    res = await data_layer.list_threads(payload.pagination, payload.filter)
+    try:
+        raw_payload = await request.json()
+    except Exception:
+        raw_payload = {}
+
+    project_id = raw_payload.get("projectId") or request.query_params.get("project_id")
+    if project_id and hasattr(data_layer, "list_threads_for_project"):
+        res = await data_layer.list_threads_for_project(
+            payload.pagination,
+            payload.filter,
+            project_id,
+        )
+    else:
+        res = await data_layer.list_threads(payload.pagination, payload.filter)
+
     return JSONResponse(content=res.to_dict())
 
 
