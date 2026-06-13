@@ -4,8 +4,6 @@ import {
   useChatMessages
 } from '@chainlit/react-client';
 
-import { Send } from '@/components/icons/Send';
-import { Stop } from '@/components/icons/Stop';
 import { Button } from '@/components/ui/button';
 import {
   Tooltip,
@@ -14,6 +12,7 @@ import {
   TooltipTrigger
 } from '@/components/ui/tooltip';
 import { Translator } from 'components/i18n';
+import { Play, Square } from 'lucide-react';
 
 interface SubmitButtonProps {
   disabled?: boolean;
@@ -39,7 +38,7 @@ export default function SubmitButton({
               size="icon"
               className="rounded-full h-8 w-8"
             >
-              <Stop className="!size-6" />
+              <Square className="!size-4 fill-current" />
             </Button>
           </TooltipTrigger>
           <TooltipContent>
@@ -58,7 +57,7 @@ export default function SubmitButton({
               size="icon"
               className="rounded-full h-8 w-8"
             >
-              <Send className="!size-6" />
+              <Play className="!size-4 fill-current" />
             </Button>
           </TooltipTrigger>
           <TooltipContent>

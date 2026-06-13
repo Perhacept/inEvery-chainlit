@@ -7,6 +7,7 @@ import {
 } from 'react';
 import { useRecoilState, useRecoilValue, useSetRecoilState } from 'recoil';
 import { v4 as uuidv4 } from 'uuid';
+import { toast } from 'sonner';
 
 import {
   FileSpec,
@@ -23,6 +24,13 @@ import { modesState } from '@chainlit/react-client';
 import { Settings } from '@/components/icons/Settings';
 import { Button } from '@/components/ui/button';
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue
+} from '@/components/ui/select';
+import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
@@ -34,11 +42,13 @@ import { useQuery } from '@/hooks/query';
 import { useIsMobile } from '@/hooks/use-mobile';
 
 import { chatSettingsOpenState } from '@/state/project';
+import { userEnvState } from '@/state/user';
 import {
   IAttachment,
   attachmentsState,
   persistentCommandState
 } from 'state/chat';
+import { apiClient } from 'api';
 
 import { Attachments } from './Attachments';
 import CommandButtons from './CommandButtons';
@@ -71,6 +81,7 @@ export default function MessageComposer({
   );
   const commands = useRecoilValue(commandsState);
   const setChatSettingsOpen = useSetRecoilState(chatSettingsOpenState);
+  const [userEnv, setUserEnv] = useRecoilState(userEnvState);
 
   // Pre-select the command marked as selected by the backend
   useEffect(() => {
@@ -87,6 +98,8 @@ export default function MessageComposer({
   const { askUser, chatSettingsInputs, disabled: _disabled } = useChatData();
 
   const disabled = _disabled || !!attachments.find((a) => !a.uploaded);
+  const permissionMode =
+    userEnv.inevery_permission_mode === 'bypass' ? 'bypass' : 'default';
 
   const { config } = useConfig();
   const showSettingsInComposer =
@@ -195,6 +208,29 @@ export default function MessageComposer({
       sendMessage(message, fileReferences);
     },
     [user, sendMessage, autoScrollRef, modes, getSelectedOptionId]
+  );
+
+  const updatePermissionMode = useCallback(
+    async (permission_mode: 'default' | 'bypass') => {
+      setUserEnv((previous) => {
+        const next = { ...previous, inevery_permission_mode: permission_mode };
+        localStorage.setItem('userEnv', JSON.stringify(next));
+        return next;
+      });
+      try {
+        const payload = await apiClient.updateInEverySettings({
+          permission_mode
+        });
+        setUserEnv((previous) => {
+          const next = { ...previous, ...payload.userEnv };
+          localStorage.setItem('userEnv', JSON.stringify(next));
+          return next;
+        });
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : String(error));
+      }
+    },
+    [setUserEnv]
   );
 
   const onReply = useCallback(
@@ -311,6 +347,23 @@ export default function MessageComposer({
             </TooltipProvider>
           )}
           <McpButton disabled={disabled} />
+          <Select
+            value={permissionMode}
+            onValueChange={(value) =>
+              updatePermissionMode(value as 'default' | 'bypass')
+            }
+          >
+            <SelectTrigger
+              aria-label="Tool permission mode"
+              className="ml-1 h-8 w-[142px] rounded-full border-muted bg-background/60 px-3 text-xs"
+            >
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent align="start">
+              <SelectItem value="default">Ask approval</SelectItem>
+              <SelectItem value="bypass">Full access</SelectItem>
+            </SelectContent>
+          </Select>
           {modes.map((mode) => (
             <ModePicker
               key={mode.id}

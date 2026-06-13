@@ -56,6 +56,22 @@ export interface CreateInEveryProjectPayload {
   config?: Record<string, unknown>;
 }
 
+export interface InEveryHarnessSettings {
+  permission_mode: 'default' | 'bypass' | string;
+  error_max_turns: number;
+  error_max_budget_usd: number | null;
+  hooks_enabled: boolean;
+  mcp_enabled: boolean;
+  [key: string]: unknown;
+}
+
+export interface InEveryHarnessSettingsResponse {
+  data: InEveryHarnessSettings;
+  userEnv: Record<string, string>;
+  path: string;
+  defaults: InEveryHarnessSettings;
+}
+
 function getWorkspaceProjectId() {
   const match = window.location.pathname.match(/\/workspace\/([^/?#]+)/);
   return match ? decodeURIComponent(match[1]) : undefined;
@@ -108,6 +124,18 @@ class ExtendedChainlitAPI extends ChainlitAPI {
     payload: Partial<CreateInEveryProjectPayload>
   ): Promise<InEveryProject> {
     const res = await this.put(`/inevery/projects/${projectId}`, payload);
+    return res.json();
+  }
+
+  async getInEverySettings(): Promise<InEveryHarnessSettingsResponse> {
+    const res = await this.get(`/inevery/settings`);
+    return res.json();
+  }
+
+  async updateInEverySettings(
+    payload: Partial<InEveryHarnessSettings>
+  ): Promise<InEveryHarnessSettingsResponse> {
+    const res = await this.put(`/inevery/settings`, payload);
     return res.json();
   }
 

@@ -15,9 +15,12 @@ import Alert from '@/components/Alert';
 import { Loader } from '@/components/Loader';
 import { WorkspaceLeftPane } from '@/components/WorkspaceLeftPane';
 import Chat from '@/components/chat';
+import HarnessSettingsDialog from '@/components/HarnessSettingsDialog';
 import Translator, { useTranslation } from 'components/i18n/Translator';
 import Page from 'pages/Page';
 import { userEnvState } from 'state/user';
+import { Button } from '@/components/ui/button';
+import { Settings2 } from 'lucide-react';
 
 interface ProjectSessionBridgeProps {
   project: InEveryProject;
@@ -39,6 +42,19 @@ function ProjectSessionBridge({
   const setThreadHistory = useSetRecoilState(threadHistoryState);
   const { clear, setIdToResume } = useChatInteract();
   const { config } = useConfig();
+
+  useEffect(() => {
+    apiClient
+      .getInEverySettings()
+      .then((settings) => {
+        setUserEnv((previous) => {
+          const next = { ...previous, ...settings.userEnv };
+          localStorage.setItem('userEnv', JSON.stringify(next));
+          return next;
+        });
+      })
+      .catch(() => undefined);
+  }, [setUserEnv]);
 
   useEffect(() => {
     if (!config?.threadResumable) return;
@@ -110,6 +126,7 @@ export default function Workspace() {
   const [project, setProject] = useState<InEveryProject>();
   const [error, setError] = useState<string>();
   const [isLoading, setIsLoading] = useState(true);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const startNew = location.pathname.endsWith('/new');
   const targetThreadId = project && !startNew
     ? routeThreadId || project.threadId
@@ -187,13 +204,24 @@ export default function Workspace() {
                 {project.name}
               </p>
             </div>
-            <button
-              type="button"
-              onClick={() => navigate('/')}
-              className="rounded-md border px-3 py-1.5 text-sm text-muted-foreground transition hover:bg-accent hover:text-foreground"
-            >
-              {t('workspace.actions.backToPlayground')}
-            </button>
+            <div className="flex shrink-0 items-center gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setSettingsOpen(true)}
+              >
+                <Settings2 className="mr-2 size-4" />
+                Settings
+              </Button>
+              <button
+                type="button"
+                onClick={() => navigate('/')}
+                className="rounded-md border px-3 py-1.5 text-sm text-muted-foreground transition hover:bg-accent hover:text-foreground"
+              >
+                {t('workspace.actions.backToPlayground')}
+              </button>
+            </div>
           </div>
           <div className="min-h-0 flex-1">
             {chatReady ? (
@@ -205,6 +233,10 @@ export default function Workspace() {
             )}
           </div>
         </aside>
+        <HarnessSettingsDialog
+          open={settingsOpen}
+          onOpenChange={setSettingsOpen}
+        />
       </div>
     </Page>
   );

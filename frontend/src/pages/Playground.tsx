@@ -27,6 +27,7 @@ import {
   SelectValue
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
+import HarnessSettingsDialog from '@/components/HarnessSettingsDialog';
 
 import {
   Box,
@@ -36,6 +37,7 @@ import {
   NotebookTabs,
   PenLine,
   Plus,
+  Settings2,
   Video
 } from 'lucide-react';
 
@@ -67,6 +69,7 @@ export default function Playground() {
   const [scene, setScene] = useState<InEverySceneType>(TEMPLATE_SCENE);
   const [brief, setBrief] = useState('');
   const [isCreating, setIsCreating] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   const sortedProjects = useMemo(
     () =>
@@ -144,6 +147,15 @@ export default function Playground() {
             </div>
           </div>
           <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setSettingsOpen(true)}
+              type="button"
+            >
+              <Settings2 className="mr-2 size-4" />
+              Settings
+            </Button>
             <Button
               variant="outline"
               size="sm"
@@ -341,6 +353,10 @@ export default function Playground() {
           </form>
         </DialogContent>
       </Dialog>
+      <HarnessSettingsDialog
+        open={settingsOpen}
+        onOpenChange={setSettingsOpen}
+      />
     </div>
   );
 }

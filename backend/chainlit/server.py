@@ -1000,6 +1000,38 @@ async def delete_inevery_project(project_id: str, current_user: UserParam):
     return JSONResponse(content={"success": True})
 
 
+@router.get("/inevery/settings")
+async def get_inevery_settings(current_user: UserParam):
+    """Get user-scoped inEvery harness settings."""
+
+    user = _require_inevery_user(current_user)
+    data_layer = _require_inevery_data_layer()
+
+    if not hasattr(data_layer, "get_harness_settings"):
+        raise HTTPException(status_code=400, detail="Harness settings are not enabled")
+
+    settings = await data_layer.get_harness_settings(user.identifier)
+    return JSONResponse(content=settings)
+
+
+@router.put("/inevery/settings")
+async def update_inevery_settings(request: Request, current_user: UserParam):
+    """Update user-scoped inEvery harness settings."""
+
+    user = _require_inevery_user(current_user)
+    data_layer = _require_inevery_data_layer()
+
+    if not hasattr(data_layer, "update_harness_settings"):
+        raise HTTPException(status_code=400, detail="Harness settings are not enabled")
+
+    payload = await request.json()
+    if not isinstance(payload, dict):
+        raise HTTPException(status_code=400, detail="Settings payload must be an object")
+
+    settings = await data_layer.update_harness_settings(user.identifier, payload)
+    return JSONResponse(content=settings)
+
+
 @router.put("/feedback")
 async def update_feedback(
     request: Request,
