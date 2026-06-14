@@ -236,6 +236,8 @@ export default function Workspace() {
         <HarnessSettingsDialog
           open={settingsOpen}
           onOpenChange={setSettingsOpen}
+          projectId={project.id}
+          sceneType={project.scene}
         />
       </div>
     </Page>

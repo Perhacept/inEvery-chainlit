@@ -1,6 +1,5 @@
 import { useNavigate } from 'react-router-dom';
 
-import SidebarTrigger from '@/components/header/SidebarTrigger';
 import { Sidebar, SidebarHeader, SidebarRail } from '@/components/ui/sidebar';
 
 import NewChatButton from '../header/NewChat';
@@ -15,7 +14,6 @@ export default function LeftSidebar({
     <Sidebar {...props} className="border-none">
       <SidebarHeader className="py-3">
         <div className="flex items-center justify-between">
-          <SidebarTrigger />
           <div className="flex items-center">
             <SearchChats />
             <NewChatButton navigate={navigate} />

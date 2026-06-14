@@ -60,16 +60,10 @@ const Header = memo(() => {
       id="header"
     >
       <div className="flex items-center">
-        {historyEnabled && !sidebarHidden ? (
-          !sidebarOpen ? (
-            <SidebarTrigger />
-          ) : null
-        ) : null}
-        {historyEnabled && !sidebarHidden ? (
-          !sidebarOpen ? (
-            <NewChatButton navigate={navigate} />
-          ) : null
-        ) : (
+        {historyEnabled && !sidebarHidden ? <SidebarTrigger /> : null}
+        {historyEnabled && !sidebarHidden && !sidebarOpen ? (
+          <NewChatButton navigate={navigate} />
+        ) : historyEnabled && !sidebarHidden ? null : (
           <NewChatButton navigate={navigate} />
         )}
 

@@ -10,7 +10,7 @@ import urllib.parse
 import webbrowser
 from contextlib import AsyncExitStack, asynccontextmanager
 from pathlib import Path
-from typing import TYPE_CHECKING, List, Optional, Union, cast
+from typing import TYPE_CHECKING, Any, List, Optional, Union, cast
 
 import socketio
 from fastapi import (
@@ -1030,6 +1030,186 @@ async def update_inevery_settings(request: Request, current_user: UserParam):
 
     settings = await data_layer.update_harness_settings(user.identifier, payload)
     return JSONResponse(content=settings)
+
+
+@router.get("/inevery/tools")
+async def list_inevery_tools(current_user: UserParam):
+    """List harness tools available from the local tool registry."""
+
+    _require_inevery_user(current_user)
+
+    try:
+        from harnesscore.tool_executor import all_registered_tools
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+    tools = [_inevery_tool_to_dict(tool) for tool in all_registered_tools(include_disabled=True)]
+    tools.sort(key=lambda item: (item["category"], item["name"]))
+    return JSONResponse(content={"data": tools})
+
+
+@router.post("/inevery/tools/debug")
+async def debug_inevery_tool(request: Request, current_user: UserParam):
+    """Validate or execute one harness tool in the authenticated user's project scope."""
+
+    user = _require_inevery_user(current_user)
+    payload = await request.json()
+    if not isinstance(payload, dict):
+        raise HTTPException(status_code=400, detail="Tool debug payload must be an object")
+
+    tool_name = str(payload.get("toolName") or payload.get("name") or "").strip()
+    if not tool_name:
+        raise HTTPException(status_code=400, detail="toolName is required")
+
+    arguments = payload.get("arguments") or {}
+    if not isinstance(arguments, dict):
+        raise HTTPException(status_code=400, detail="arguments must be an object")
+
+    project_id = str(payload.get("projectId") or "").strip()
+    scene_type = str(payload.get("sceneType") or "").strip()
+    dry_run = bool(payload.get("dryRun", True))
+
+    try:
+        from harnesscore.interfaces import ToolCall
+        from harnesscore.settings import HarnessUserSettings
+        from harnesscore.tool_executor import AsyncToolExecutor, all_registered_tools
+        from harnesscore.workspace import WorkspaceManager
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+    requested_tool = None
+    for tool in all_registered_tools(include_disabled=True):
+        if tool.matches_name(tool_name):
+            requested_tool = tool
+            break
+    if requested_tool is None:
+        raise HTTPException(status_code=404, detail=f"Tool not found: {tool_name}")
+
+    settings_payload: dict[str, Any] = {}
+    workspace: Any | None = None
+    executor: Any | None = None
+    data_layer = get_data_layer()
+    if project_id:
+        if not data_layer or not hasattr(data_layer, "get_project"):
+            raise HTTPException(status_code=400, detail="Project persistence is not enabled")
+        project = await data_layer.get_project(user.identifier, project_id)
+        if not project:
+            raise HTTPException(status_code=404, detail="Project not found")
+        if not scene_type:
+            scene_type = str(project.get("scene") or "code")
+    else:
+        project_id = "debug"
+    scene_type = scene_type or "code"
+
+    workspace = WorkspaceManager(project_id)
+    if data_layer and hasattr(data_layer, "get_harness_settings"):
+        settings_response = await data_layer.get_harness_settings(user.identifier)
+        settings_payload = (
+            settings_response.get("data") if isinstance(settings_response, dict) else {}
+        ) or {}
+    settings = HarnessUserSettings.from_mapping(settings_payload)
+
+    executor = AsyncToolExecutor(
+        workspace,
+        [requested_tool],
+        permission_mode=settings.permission_mode,
+        scene_type=scene_type,
+        mcp_enabled=settings.mcp_enabled,
+        user_id=user.identifier,
+    )
+    try:
+        await executor.prepare()
+        tool = executor._tools.get(tool_name) or executor._tools.get(requested_tool.name)
+        if tool is None:
+            raise HTTPException(status_code=404, detail=f"Tool not available: {tool_name}")
+
+        parsed = tool.parse_input(arguments)
+        validated = await tool.validate_input(executor.context, parsed)
+        validated_payload = _model_to_jsonable(validated)
+
+        if dry_run:
+            return JSONResponse(
+                content={
+                    "dryRun": True,
+                    "tool": _inevery_tool_to_dict(tool),
+                    "input": arguments,
+                    "validatedInput": validated_payload,
+                    "workspace": workspace.relative_project_dir,
+                }
+            )
+
+        result = await executor.run_tool_use(
+            ToolCall(
+                id=str(payload.get("toolCallId") or "debug_tool_call"),
+                name=tool.name,
+                arguments=arguments,
+            ),
+            apply_context_modifier=True,
+        )
+        return JSONResponse(
+            content={
+                "dryRun": False,
+                "tool": _inevery_tool_to_dict(tool),
+                "input": arguments,
+                "validatedInput": validated_payload,
+                "result": {
+                    "toolCallId": result.tool_call_id,
+                    "name": result.name,
+                    "content": result.content,
+                    "isError": result.is_error,
+                    "metadata": _json_safe(result.metadata),
+                    "newMessages": _json_safe(result.new_messages),
+                },
+                "workspace": workspace.relative_project_dir,
+            }
+        )
+    except HTTPException:
+        raise
+    except Exception as exc:
+        return JSONResponse(
+            status_code=400,
+            content={
+                "dryRun": dry_run,
+                "tool": _inevery_tool_to_dict(requested_tool),
+                "input": arguments,
+                "error": str(exc),
+                "errorType": exc.__class__.__name__,
+                "workspace": workspace.relative_project_dir if workspace else project_id,
+            },
+        )
+    finally:
+        if executor is not None:
+            await executor.aclose()
+
+
+def _inevery_tool_to_dict(tool: Any) -> dict[str, Any]:
+    schema = tool.to_openai_schema()
+    return {
+        "name": tool.name,
+        "aliases": list(getattr(tool, "aliases", ()) or ()),
+        "description": getattr(tool, "description", ""),
+        "category": getattr(tool, "category", "misc"),
+        "enabled": bool(tool.enabled()),
+        "deferred": bool(getattr(tool, "should_defer", False)),
+        "readOnly": bool(tool.read_only(None)),
+        "destructive": bool(tool.destructive(None)),
+        "concurrencySafe": bool(tool.concurrency_safe(None)),
+        "searchHint": getattr(tool, "search_hint", ""),
+        "schema": schema.get("function", {}).get("parameters") or {},
+    }
+
+
+def _model_to_jsonable(value: Any) -> Any:
+    if hasattr(value, "model_dump"):
+        return value.model_dump(mode="json")
+    return _json_safe(value)
+
+
+def _json_safe(value: Any) -> Any:
+    try:
+        return json.loads(json.dumps(value, ensure_ascii=False, default=str))
+    except TypeError:
+        return str(value)
 
 
 @router.put("/feedback")

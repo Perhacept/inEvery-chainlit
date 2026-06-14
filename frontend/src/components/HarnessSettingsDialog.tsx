@@ -5,8 +5,12 @@ import { toast } from 'sonner';
 import {
   apiClient,
   InEveryHarnessSettings,
-  InEveryHarnessSettingsResponse
+  InEveryHarnessSettingsResponse,
+  InEverySceneType,
+  InEveryToolDebugResponse,
+  InEveryToolDefinition
 } from 'api';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -27,12 +31,25 @@ import {
 } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
 import { Switch } from '@/components/ui/switch';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Textarea } from '@/components/ui/textarea';
 import { userEnvState } from 'state/user';
-import { Download, FolderOpen, Settings2, Upload } from 'lucide-react';
+import {
+  Bug,
+  Download,
+  FolderOpen,
+  Play,
+  Search,
+  Settings2,
+  Upload,
+  Wrench
+} from 'lucide-react';
 
 interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  projectId?: string;
+  sceneType?: InEverySceneType;
 }
 
 type FormState = {
@@ -51,9 +68,20 @@ const DEFAULT_FORM: FormState = {
   mcp_enabled: true
 };
 
-export default function HarnessSettingsDialog({ open, onOpenChange }: Props) {
+export default function HarnessSettingsDialog({
+  open,
+  onOpenChange,
+  projectId,
+  sceneType
+}: Props) {
   const [settings, setSettings] = useState<InEveryHarnessSettingsResponse>();
   const [form, setForm] = useState<FormState>(DEFAULT_FORM);
+  const [tools, setTools] = useState<InEveryToolDefinition[]>([]);
+  const [toolFilter, setToolFilter] = useState('');
+  const [selectedToolName, setSelectedToolName] = useState('');
+  const [debugInput, setDebugInput] = useState('{}');
+  const [debugResult, setDebugResult] = useState<InEveryToolDebugResponse>();
+  const [isDebugging, setIsDebugging] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const setUserEnv = useSetRecoilState(userEnvState);
@@ -74,6 +102,28 @@ export default function HarnessSettingsDialog({ open, onOpenChange }: Props) {
     );
   }, [form, settings]);
 
+  const filteredTools = useMemo(() => {
+    const query = toolFilter.trim().toLowerCase();
+    if (!query) return tools;
+    return tools.filter((tool) =>
+      [
+        tool.name,
+        tool.category,
+        tool.description,
+        tool.searchHint,
+        ...tool.aliases
+      ]
+        .join(' ')
+        .toLowerCase()
+        .includes(query)
+    );
+  }, [toolFilter, tools]);
+
+  const selectedTool = useMemo(
+    () => tools.find((tool) => tool.name === selectedToolName),
+    [selectedToolName, tools]
+  );
+
   useEffect(() => {
     if (!open) return;
     apiClient
@@ -82,6 +132,15 @@ export default function HarnessSettingsDialog({ open, onOpenChange }: Props) {
         setSettings(payload);
         setForm(settingsToForm(payload.data));
         syncUserEnv(payload.userEnv);
+      })
+      .catch((error) =>
+        toast.error(error instanceof Error ? error.message : String(error))
+      );
+    apiClient
+      .listInEveryTools()
+      .then((payload) => {
+        setTools(payload);
+        setSelectedToolName((current) => current || payload[0]?.name || '');
       })
       .catch((error) =>
         toast.error(error instanceof Error ? error.message : String(error))
@@ -142,9 +201,45 @@ export default function HarnessSettingsDialog({ open, onOpenChange }: Props) {
     }
   };
 
+  const runToolDebug = async (dryRun: boolean) => {
+    if (!selectedToolName) return;
+    let parsedInput: Record<string, unknown>;
+    try {
+      const parsed = JSON.parse(debugInput || '{}');
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+        throw new Error('Tool input must be a JSON object');
+      }
+      parsedInput = parsed as Record<string, unknown>;
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : String(error));
+      return;
+    }
+
+    setIsDebugging(true);
+    try {
+      const response = await apiClient.debugInEveryTool({
+        toolName: selectedToolName,
+        arguments: parsedInput,
+        projectId,
+        sceneType,
+        dryRun
+      });
+      setDebugResult(response);
+      if (response.error) {
+        toast.error(response.error);
+      } else {
+        toast.success(dryRun ? 'Tool input validated' : 'Tool executed');
+      }
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : String(error));
+    } finally {
+      setIsDebugging(false);
+    }
+  };
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[560px]">
+      <DialogContent className="max-h-[90vh] overflow-hidden sm:max-w-[860px]">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Settings2 className="size-5" />
@@ -155,96 +250,217 @@ export default function HarnessSettingsDialog({ open, onOpenChange }: Props) {
           </DialogDescription>
         </DialogHeader>
 
-        <div className="grid gap-5 py-2">
-          <section className="grid gap-3">
-            <div className="grid gap-2">
-              <Label htmlFor="permission-mode">Tool permission mode</Label>
-              <Select
-                value={form.permission_mode}
-                onValueChange={(value) =>
-                  setForm((current) => ({
-                    ...current,
-                    permission_mode: value as FormState['permission_mode']
-                  }))
-                }
-              >
-                <SelectTrigger id="permission-mode">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="default">Ask for approval</SelectItem>
-                  <SelectItem value="bypass">Full access</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+        <Tabs defaultValue="settings" className="min-h-0">
+          <TabsList>
+            <TabsTrigger value="settings">
+              <Settings2 className="mr-2 size-4" />
+              Settings
+            </TabsTrigger>
+            <TabsTrigger value="tools">
+              <Wrench className="mr-2 size-4" />
+              Tools
+            </TabsTrigger>
+          </TabsList>
 
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <div className="grid gap-2">
-                <Label htmlFor="max-turns">Max turns</Label>
-                <Input
-                  id="max-turns"
-                  type="number"
-                  min={1}
-                  value={form.error_max_turns}
-                  onChange={(event) =>
-                    setForm((current) => ({
-                      ...current,
-                      error_max_turns: event.target.value
-                    }))
+          <TabsContent value="settings" className="max-h-[58vh] overflow-y-auto">
+            <div className="grid gap-5 py-2 pr-1">
+              <section className="grid gap-3">
+                <div className="grid gap-2">
+                  <Label htmlFor="permission-mode">Tool permission mode</Label>
+                  <Select
+                    value={form.permission_mode}
+                    onValueChange={(value) =>
+                      setForm((current) => ({
+                        ...current,
+                        permission_mode: value as FormState['permission_mode']
+                      }))
+                    }
+                  >
+                    <SelectTrigger id="permission-mode">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="default">Ask for approval</SelectItem>
+                      <SelectItem value="bypass">Full access</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <div className="grid gap-2">
+                    <Label htmlFor="max-turns">Max turns</Label>
+                    <Input
+                      id="max-turns"
+                      type="number"
+                      min={1}
+                      value={form.error_max_turns}
+                      onChange={(event) =>
+                        setForm((current) => ({
+                          ...current,
+                          error_max_turns: event.target.value
+                        }))
+                      }
+                    />
+                  </div>
+                  <div className="grid gap-2">
+                    <Label htmlFor="max-budget">Max budget USD</Label>
+                    <Input
+                      id="max-budget"
+                      type="number"
+                      min={0}
+                      step="0.01"
+                      placeholder="Unlimited"
+                      value={form.error_max_budget_usd}
+                      onChange={(event) =>
+                        setForm((current) => ({
+                          ...current,
+                          error_max_budget_usd: event.target.value
+                        }))
+                      }
+                    />
+                  </div>
+                </div>
+              </section>
+
+              <Separator />
+
+              <section className="grid gap-3">
+                <SettingSwitch
+                  label="Custom hooks"
+                  checked={form.hooks_enabled}
+                  onCheckedChange={(checked) =>
+                    setForm((current) => ({ ...current, hooks_enabled: checked }))
                   }
                 />
-              </div>
-              <div className="grid gap-2">
-                <Label htmlFor="max-budget">Max budget USD</Label>
-                <Input
-                  id="max-budget"
-                  type="number"
-                  min={0}
-                  step="0.01"
-                  placeholder="Unlimited"
-                  value={form.error_max_budget_usd}
-                  onChange={(event) =>
-                    setForm((current) => ({
-                      ...current,
-                      error_max_budget_usd: event.target.value
-                    }))
+                <SettingSwitch
+                  label="Project MCP tools"
+                  checked={form.mcp_enabled}
+                  onCheckedChange={(checked) =>
+                    setForm((current) => ({ ...current, mcp_enabled: checked }))
                   }
                 />
+              </section>
+
+              <div className="rounded-md border bg-muted/35 p-3">
+                <div className="flex items-start gap-2">
+                  <FolderOpen className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+                  <div className="min-w-0">
+                    <p className="text-xs font-medium uppercase text-muted-foreground">
+                      Save path
+                    </p>
+                    <p className="break-all text-sm">
+                      {storagePath || 'Loading...'}
+                    </p>
+                  </div>
+                </div>
               </div>
             </div>
-          </section>
+          </TabsContent>
 
-          <Separator />
-
-          <section className="grid gap-3">
-            <SettingSwitch
-              label="Custom hooks"
-              checked={form.hooks_enabled}
-              onCheckedChange={(checked) =>
-                setForm((current) => ({ ...current, hooks_enabled: checked }))
-              }
-            />
-            <SettingSwitch
-              label="Project MCP tools"
-              checked={form.mcp_enabled}
-              onCheckedChange={(checked) =>
-                setForm((current) => ({ ...current, mcp_enabled: checked }))
-              }
-            />
-          </section>
-
-          <div className="rounded-md border bg-muted/35 p-3">
-            <div className="flex items-start gap-2">
-              <FolderOpen className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
-              <div className="min-w-0">
-                <p className="text-xs font-medium uppercase text-muted-foreground">
-                  Save path
-                </p>
-                <p className="break-all text-sm">{storagePath || 'Loading...'}</p>
+          <TabsContent value="tools" className="max-h-[58vh] overflow-y-auto">
+            <div className="grid gap-4 py-2 pr-1">
+              <div className="grid gap-2">
+                <Label htmlFor="tool-filter">Tool search</Label>
+                <div className="relative">
+                  <Search className="pointer-events-none absolute left-3 top-3 size-4 text-muted-foreground" />
+                  <Input
+                    id="tool-filter"
+                    value={toolFilter}
+                    onChange={(event) => setToolFilter(event.target.value)}
+                    className="pl-9"
+                    placeholder="Search by name, category or description"
+                  />
+                </div>
               </div>
+
+              <div className="grid gap-2">
+                <Label>Available tool</Label>
+                <Select
+                  value={selectedToolName}
+                  onValueChange={(value) => {
+                    setSelectedToolName(value);
+                    setDebugResult(undefined);
+                  }}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select a tool" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {filteredTools.map((tool) => (
+                      <SelectItem key={tool.name} value={tool.name}>
+                        {tool.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {selectedTool ? (
+                <section className="grid gap-3 rounded-md border p-3">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Badge variant="secondary">{selectedTool.category}</Badge>
+                    {selectedTool.readOnly ? <Badge variant="outline">read</Badge> : null}
+                    {selectedTool.destructive ? (
+                      <Badge variant="destructive">destructive</Badge>
+                    ) : null}
+                    {!selectedTool.enabled ? (
+                      <Badge variant="destructive">disabled</Badge>
+                    ) : null}
+                    {selectedTool.deferred ? <Badge variant="outline">deferred</Badge> : null}
+                  </div>
+                  <p className="text-sm text-muted-foreground">
+                    {selectedTool.description}
+                  </p>
+                  <div className="grid gap-2">
+                    <Label>Input schema</Label>
+                    <pre className="max-h-48 overflow-auto rounded-md bg-muted p-3 text-xs">
+                      {JSON.stringify(selectedTool.schema, null, 2)}
+                    </pre>
+                  </div>
+                </section>
+              ) : null}
+
+              <section className="grid gap-3">
+                <Label htmlFor="tool-debug-input">Debug input JSON</Label>
+                <Textarea
+                  id="tool-debug-input"
+                  value={debugInput}
+                  onChange={(event) => setDebugInput(event.target.value)}
+                  className="min-h-32 font-mono text-xs"
+                  spellCheck={false}
+                />
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={isDebugging || !selectedToolName}
+                    onClick={() => runToolDebug(true)}
+                  >
+                    <Bug className="mr-2 size-4" />
+                    Dry run
+                  </Button>
+                  <Button
+                    type="button"
+                    disabled={isDebugging || !selectedToolName}
+                    onClick={() => runToolDebug(false)}
+                  >
+                    <Play className="mr-2 size-4" />
+                    Execute
+                  </Button>
+                </div>
+              </section>
+
+              {debugResult ? (
+                <section className="grid gap-2">
+                  <Label>Debug result</Label>
+                  <pre className="max-h-72 overflow-auto rounded-md bg-muted p-3 text-xs">
+                    {JSON.stringify(debugResult, null, 2)}
+                  </pre>
+                </section>
+              ) : null}
             </div>
-          </div>
-        </div>
+          </TabsContent>
+        </Tabs>
 
         <DialogFooter className="gap-2 sm:justify-between">
           <div className="flex gap-2">

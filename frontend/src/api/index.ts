@@ -72,6 +72,38 @@ export interface InEveryHarnessSettingsResponse {
   defaults: InEveryHarnessSettings;
 }
 
+export interface InEveryToolDefinition {
+  name: string;
+  aliases: string[];
+  description: string;
+  category: string;
+  enabled: boolean;
+  deferred: boolean;
+  readOnly: boolean;
+  destructive: boolean;
+  concurrencySafe: boolean;
+  searchHint: string;
+  schema: Record<string, unknown>;
+}
+
+export interface InEveryToolDebugResponse {
+  dryRun: boolean;
+  tool: InEveryToolDefinition;
+  input: Record<string, unknown>;
+  validatedInput?: Record<string, unknown>;
+  result?: {
+    toolCallId: string;
+    name: string;
+    content: string;
+    isError: boolean;
+    metadata: Record<string, unknown>;
+    newMessages: unknown[];
+  };
+  workspace?: string;
+  error?: string;
+  errorType?: string;
+}
+
 function getWorkspaceProjectId() {
   const match = window.location.pathname.match(/\/workspace\/([^/?#]+)/);
   return match ? decodeURIComponent(match[1]) : undefined;
@@ -136,6 +168,23 @@ class ExtendedChainlitAPI extends ChainlitAPI {
     payload: Partial<InEveryHarnessSettings>
   ): Promise<InEveryHarnessSettingsResponse> {
     const res = await this.put(`/inevery/settings`, payload);
+    return res.json();
+  }
+
+  async listInEveryTools(): Promise<InEveryToolDefinition[]> {
+    const res = await this.get(`/inevery/tools`);
+    const payload = await res.json();
+    return payload.data || [];
+  }
+
+  async debugInEveryTool(payload: {
+    toolName: string;
+    arguments: Record<string, unknown>;
+    projectId?: string;
+    sceneType?: InEverySceneType;
+    dryRun?: boolean;
+  }): Promise<InEveryToolDebugResponse> {
+    const res = await this.post(`/inevery/tools/debug`, payload);
     return res.json();
   }
 

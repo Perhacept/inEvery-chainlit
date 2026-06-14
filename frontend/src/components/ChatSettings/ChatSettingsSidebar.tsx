@@ -1,6 +1,6 @@
 import cloneDeep from 'lodash/cloneDeep';
 import mapValues from 'lodash/mapValues';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowRight } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { useRecoilState, useSetRecoilState } from 'recoil';
@@ -217,17 +217,12 @@ export default function ChatSettingsSidebar() {
           <Card className="overflow-y-auto h-full relative flex flex-col">
             <div
               id="chat-settings-sidebar-title"
-              className="text-lg font-semibold text-foreground px-6 py-4 flex items-center"
+              className="text-lg font-semibold text-foreground px-6 py-4 flex items-center justify-between gap-3"
             >
-              <Button
-                className="-ml-2"
-                onClick={handleClose}
-                size="icon"
-                variant="ghost"
-              >
-                <ArrowLeft />
-              </Button>
               <Translator path="chat.settings.title" />
+              <Button onClick={handleClose} size="icon" variant="ghost">
+                <ArrowRight />
+              </Button>
             </div>
             <CardContent
               id="chat-settings-sidebar-content"
