@@ -62,6 +62,8 @@ export interface InEveryHarnessSettings {
   error_max_budget_usd: number | null;
   hooks_enabled: boolean;
   mcp_enabled: boolean;
+  delete_guard_enabled: boolean;
+  language: 'browser' | 'en-US' | 'zh-CN' | string;
   [key: string]: unknown;
 }
 

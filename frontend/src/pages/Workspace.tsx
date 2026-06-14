@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { type CSSProperties, useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useSetRecoilState } from 'recoil';
 import { toast } from 'sonner';
@@ -13,6 +13,7 @@ import {
 import { apiClient, InEveryProject } from 'api';
 import Alert from '@/components/Alert';
 import { Loader } from '@/components/Loader';
+import LeftSidebar from '@/components/LeftSidebar';
 import { WorkspaceLeftPane } from '@/components/WorkspaceLeftPane';
 import Chat from '@/components/chat';
 import HarnessSettingsDialog from '@/components/HarnessSettingsDialog';
@@ -21,6 +22,16 @@ import Page from 'pages/Page';
 import { userEnvState } from 'state/user';
 import { Button } from '@/components/ui/button';
 import { Settings2 } from 'lucide-react';
+import {
+  ResizableHandle,
+  ResizablePanel,
+  ResizablePanelGroup
+} from '@/components/ui/resizable';
+import {
+  SidebarProvider,
+  SidebarTrigger,
+  useSidebar
+} from '@/components/ui/sidebar';
 
 interface ProjectSessionBridgeProps {
   project: InEveryProject;
@@ -28,6 +39,95 @@ interface ProjectSessionBridgeProps {
   threadIdToResume?: string;
   activeThreadId?: string;
   newChatKey?: string;
+}
+
+interface WorkspaceChatPanelsProps {
+  project: InEveryProject;
+  chatReady: boolean;
+  onBackToPlayground: () => void;
+  onOpenSettings: () => void;
+}
+
+function WorkspaceChatPanels({
+  project,
+  chatReady,
+  onBackToPlayground,
+  onOpenSettings
+}: WorkspaceChatPanelsProps) {
+  const { t } = useTranslation();
+  const { open } = useSidebar();
+
+  return (
+    <ResizablePanelGroup
+      key={open ? 'with-chat-sidebar' : 'chat-only'}
+      direction="horizontal"
+      className="h-full w-full"
+    >
+      <ResizablePanel minSize={30} defaultSize={open ? 70 : 100}>
+        <aside className="flex h-full min-h-0 w-full min-w-[320px] flex-col bg-background">
+          <div className="flex min-h-16 items-center justify-between gap-3 border-b px-4">
+            <div className="min-w-0">
+              <h2 className="truncate font-semibold">
+                {t('workspace.chat.title')}
+              </h2>
+              <p className="truncate text-xs text-muted-foreground">
+                {project.name}
+              </p>
+            </div>
+            <div className="flex shrink-0 items-center gap-2">
+              <SidebarTrigger
+                aria-label={t('workspace.chat.toggleSidebar')}
+                className="hidden lg:inline-flex"
+              />
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={onOpenSettings}
+              >
+                <Settings2 className="mr-2 size-4" />
+                {t('workspace.actions.settings')}
+              </Button>
+              <button
+                type="button"
+                onClick={onBackToPlayground}
+                className="rounded-md border px-3 py-1.5 text-sm text-muted-foreground transition hover:bg-accent hover:text-foreground"
+              >
+                {t('workspace.actions.backToPlayground')}
+              </button>
+            </div>
+          </div>
+          <div className="min-h-0 flex-1">
+            {chatReady ? (
+              <Chat />
+            ) : (
+              <div className="flex h-full items-center justify-center">
+                <Loader className="!size-6" />
+              </div>
+            )}
+          </div>
+        </aside>
+      </ResizablePanel>
+      {open ? (
+        <>
+          <ResizableHandle withHandle className="hidden lg:flex" />
+          <ResizablePanel
+            minSize={18}
+            defaultSize={30}
+            className="hidden min-w-[220px] lg:flex"
+          >
+            <LeftSidebar
+              side="right"
+              collapsible="offcanvas"
+              embedded
+              className="border-l"
+              showRail
+            />
+          </ResizablePanel>
+        </>
+      ) : null}
+    </ResizablePanelGroup>
+  );
 }
 
 function ProjectSessionBridge({
@@ -120,7 +220,6 @@ export default function Workspace() {
   const { projectId, threadId: routeThreadId } = useParams();
   const location = useLocation();
   const navigate = useNavigate();
-  const { t } = useTranslation();
   const { config } = useConfig();
   const { threadId } = useChatMessages();
   const [project, setProject] = useState<InEveryProject>();
@@ -160,7 +259,11 @@ export default function Workspace() {
 
   if (isLoading) {
     return (
-      <Page>
+      <Page
+        showGlobalSidebar={false}
+        showHeaderNewChatButton={false}
+        showRightRail={false}
+      >
         <div className="flex flex-grow items-center justify-center">
           <Loader className="!size-6" />
         </div>
@@ -170,7 +273,11 @@ export default function Workspace() {
 
   if (error || !project) {
     return (
-      <Page>
+      <Page
+        showGlobalSidebar={false}
+        showHeaderNewChatButton={false}
+        showRightRail={false}
+      >
         <div className="flex flex-grow items-center justify-center p-6">
           <Alert variant="error" className="max-w-lg">
             {error || <Translator path="workspace.errors.notFound" />}
@@ -184,7 +291,11 @@ export default function Workspace() {
     !config?.threadResumable || startNew || threadId === targetThreadId;
 
   return (
-    <Page>
+    <Page
+      showGlobalSidebar={false}
+      showHeaderNewChatButton={false}
+      showRightRail={false}
+    >
       <div className="flex h-full min-h-0 w-full flex-col overflow-hidden lg:flex-row">
         <ProjectSessionBridge
           project={project}
@@ -194,45 +305,23 @@ export default function Workspace() {
           newChatKey={location.search}
         />
         <WorkspaceLeftPane project={project} />
-        <aside className="flex min-h-[44vh] w-full shrink-0 flex-col border-t bg-background lg:min-h-0 lg:w-[420px] lg:border-l lg:border-t-0 xl:w-[480px]">
-          <div className="flex min-h-16 items-center justify-between gap-3 border-b px-4">
-            <div className="min-w-0">
-              <h2 className="truncate font-semibold">
-                {t('workspace.chat.title')}
-              </h2>
-              <p className="truncate text-xs text-muted-foreground">
-                {project.name}
-              </p>
-            </div>
-            <div className="flex shrink-0 items-center gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => setSettingsOpen(true)}
-              >
-                <Settings2 className="mr-2 size-4" />
-                Settings
-              </Button>
-              <button
-                type="button"
-                onClick={() => navigate('/')}
-                className="rounded-md border px-3 py-1.5 text-sm text-muted-foreground transition hover:bg-accent hover:text-foreground"
-              >
-                {t('workspace.actions.backToPlayground')}
-              </button>
-            </div>
-          </div>
-          <div className="min-h-0 flex-1">
-            {chatReady ? (
-              <Chat />
-            ) : (
-              <div className="flex h-full items-center justify-center">
-                <Loader className="!size-6" />
-              </div>
-            )}
-          </div>
-        </aside>
+        <SidebarProvider
+          defaultOpen
+          persistState={false}
+          className="min-h-[44vh] w-full border-t bg-background lg:min-h-0 lg:flex-1 lg:border-l lg:border-t-0"
+          style={
+            {
+              '--sidebar-width': '100%'
+            } as CSSProperties
+          }
+        >
+          <WorkspaceChatPanels
+            project={project}
+            chatReady={chatReady}
+            onBackToPlayground={() => navigate('/')}
+            onOpenSettings={() => setSettingsOpen(true)}
+          />
+        </SidebarProvider>
         <HarnessSettingsDialog
           open={settingsOpen}
           onOpenChange={setSettingsOpen}

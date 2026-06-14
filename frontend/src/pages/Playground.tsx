@@ -154,7 +154,7 @@ export default function Playground() {
               type="button"
             >
               <Settings2 className="mr-2 size-4" />
-              Settings
+              {t('playground.actions.settings')}
             </Button>
             <Button
               variant="outline"

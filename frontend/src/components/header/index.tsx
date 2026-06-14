@@ -32,95 +32,112 @@ import SidebarTrigger from './SidebarTrigger';
 import { ThemeToggle } from './ThemeToggle';
 import UserNav from './UserNav';
 
-const Header = memo(() => {
-  const { audioConnection } = useAudio();
-  const navigate = useNavigate();
-  const { data } = useAuth();
-  const { config } = useConfig();
-  const { chatSettingsInputs } = useChatData();
-  const { open, openMobile, isMobile } = useSidebar();
-  const setChatSettingsSidebarOpen = useSetRecoilState(
-    chatSettingsSidebarOpenState
-  );
+interface HeaderProps {
+  showHistorySidebar?: boolean;
+  showChatSettingsSidebar?: boolean;
+  showNewChatButton?: boolean;
+}
 
-  const sidebarOpen = isMobile ? openMobile : open;
+const Header = memo(
+  ({
+    showHistorySidebar = true,
+    showChatSettingsSidebar = true,
+    showNewChatButton = true
+  }: HeaderProps) => {
+    const { audioConnection } = useAudio();
+    const navigate = useNavigate();
+    const { data } = useAuth();
+    const { config } = useConfig();
+    const { chatSettingsInputs } = useChatData();
+    const { open, openMobile, isMobile } = useSidebar();
+    const setChatSettingsSidebarOpen = useSetRecoilState(
+      chatSettingsSidebarOpenState
+    );
 
-  const historyEnabled = data?.requireLogin && config?.dataPersistence;
-  const sidebarHidden = config?.ui?.default_sidebar_state === 'hidden';
+    const sidebarOpen = isMobile ? openMobile : open;
 
-  const links = config?.ui?.header_links || [];
+    const historyEnabled =
+      showHistorySidebar && data?.requireLogin && config?.dataPersistence;
+    const sidebarHidden = config?.ui?.default_sidebar_state === 'hidden';
 
-  const showSettingsInHeader =
-    config?.ui?.chat_settings_location === 'sidebar' &&
-    chatSettingsInputs.length > 0;
+    const links = config?.ui?.header_links || [];
 
-  return (
-    <div
-      className="p-3 flex h-[60px] items-center justify-between gap-2 relative"
-      id="header"
-    >
-      <div className="flex items-center">
-        {historyEnabled && !sidebarHidden ? <SidebarTrigger /> : null}
-        {historyEnabled && !sidebarHidden && !sidebarOpen ? (
-          <NewChatButton navigate={navigate} />
-        ) : historyEnabled && !sidebarHidden ? null : (
-          <NewChatButton navigate={navigate} />
-        )}
+    const showSettingsInHeader =
+      showChatSettingsSidebar &&
+      config?.ui?.chat_settings_location === 'sidebar' &&
+      chatSettingsInputs.length > 0;
 
-        <ChatProfiles navigate={navigate} />
-      </div>
+    return (
+      <div
+        className="p-3 flex h-[60px] items-center justify-between gap-2 relative"
+        id="header"
+      >
+        <div className="flex items-center">
+          {historyEnabled && !sidebarHidden ? <SidebarTrigger /> : null}
+          {showNewChatButton &&
+          historyEnabled &&
+          !sidebarHidden &&
+          !sidebarOpen ? (
+            <NewChatButton navigate={navigate} />
+          ) : showNewChatButton && historyEnabled && !sidebarHidden ? null : (
+            showNewChatButton && <NewChatButton navigate={navigate} />
+          )}
 
-      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2">
-        {audioConnection === 'on' ? (
-          <AudioPresence
-            type="server"
-            height={35}
-            width={70}
-            barCount={4}
-            barSpacing={2}
-          />
-        ) : null}
-      </div>
+          <ChatProfiles navigate={navigate} />
+        </div>
 
-      <div />
-      <div className="flex items-center gap-1">
-        <ShareButton />
-        <ReadmeButton />
-        <ApiKeys />
-        {links &&
-          links.map((link, index) => (
-            <ButtonLink
-              key={`${link.name}-${link.url}-${index}`}
-              name={link.name}
-              displayName={link.display_name}
-              iconUrl={link.icon_url}
-              url={link.url}
-              target={link.target}
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2">
+          {audioConnection === 'on' ? (
+            <AudioPresence
+              type="server"
+              height={35}
+              width={70}
+              barCount={4}
+              barSpacing={2}
             />
-          ))}
-        {showSettingsInHeader && (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                id="chat-settings-header-button"
-                onClick={() => setChatSettingsSidebarOpen(true)}
-                variant="ghost"
-                size="icon"
-                className="text-muted-foreground hover:text-muted-foreground"
-              >
-                <Settings className="!size-5" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>
-              <Translator path="chat.settings.title" />
-            </TooltipContent>
-          </Tooltip>
-        )}
-        <ThemeToggle />
-        <UserNav />
+          ) : null}
+        </div>
+
+        <div />
+        <div className="flex items-center gap-1">
+          <ShareButton />
+          <ReadmeButton />
+          <ApiKeys />
+          {links &&
+            links.map((link, index) => (
+              <ButtonLink
+                key={`${link.name}-${link.url}-${index}`}
+                name={link.name}
+                displayName={link.display_name}
+                iconUrl={link.icon_url}
+                url={link.url}
+                target={link.target}
+              />
+            ))}
+          {showSettingsInHeader && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  id="chat-settings-header-button"
+                  onClick={() => setChatSettingsSidebarOpen(true)}
+                  variant="ghost"
+                  size="icon"
+                  className="text-muted-foreground hover:text-muted-foreground"
+                >
+                  <Settings className="!size-5" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <Translator path="chat.settings.title" />
+              </TooltipContent>
+            </Tooltip>
+          )}
+          <ThemeToggle />
+          <UserNav />
+        </div>
       </div>
-    </div>
-  );
-});
+    );
+  }
+);
 
 export { Header };

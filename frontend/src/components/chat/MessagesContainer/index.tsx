@@ -5,6 +5,8 @@ import { toast } from 'sonner';
 
 import {
   ChainlitContext,
+  IAction,
+  IAsk,
   IFeedback,
   IMessageElement,
   IStep,
@@ -19,6 +21,15 @@ import {
 } from '@chainlit/react-client';
 
 import { Messages } from '@/components/chat/Messages';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle
+} from '@/components/ui/alert-dialog';
 import { useTranslation } from 'components/i18n/Translator';
 
 interface Props {
@@ -184,6 +195,11 @@ const MessagesContainer = ({ navigate }: Props) => {
 
   return (
     <MessageContext.Provider value={memoizedContext}>
+      <PermissionApprovalDialog
+        askUser={askUser}
+        actions={actions}
+        messages={messages}
+      />
       <Messages
         indent={0}
         isRunning={loading}
@@ -194,5 +210,82 @@ const MessagesContainer = ({ navigate }: Props) => {
     </MessageContext.Provider>
   );
 };
+
+function PermissionApprovalDialog({
+  askUser,
+  actions,
+  messages
+}: {
+  askUser?: IAsk;
+  actions: IAction[];
+  messages: IStep[];
+}) {
+  const approval = useMemo(() => {
+    if (askUser?.spec.type !== 'action') return undefined;
+    const stepId = askUser.spec.step_id;
+    const stepActions = actions.filter(
+      (action) =>
+        action.forId === stepId && askUser.spec.keys?.includes(action.id)
+    );
+    const allowAction = stepActions.find(isPermissionAllowAction);
+    const denyAction = stepActions.find(isPermissionDenyAction);
+    if (!allowAction || !denyAction) return undefined;
+
+    return {
+      message: findStepById(messages, stepId),
+      allowAction,
+      denyAction
+    };
+  }, [actions, askUser, messages]);
+
+  if (!approval) return null;
+
+  return (
+    <AlertDialog open>
+      <AlertDialogContent className="max-w-2xl">
+        <AlertDialogHeader>
+          <AlertDialogTitle>Tool permission approval</AlertDialogTitle>
+          <div className="text-sm text-muted-foreground">
+            The agent is waiting for your decision before running this tool.
+          </div>
+        </AlertDialogHeader>
+        <pre className="max-h-[55vh] overflow-auto whitespace-pre-wrap rounded-md border bg-muted p-3 text-xs">
+          {approval.message?.output || 'Approval details are unavailable.'}
+        </pre>
+        <AlertDialogFooter>
+          <AlertDialogCancel onClick={() => askUser?.callback(approval.denyAction)}>
+            Deny
+          </AlertDialogCancel>
+          <AlertDialogAction onClick={() => askUser?.callback(approval.allowAction)}>
+            Allow once
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  );
+}
+
+function isPermissionAllowAction(action: IAction) {
+  return (
+    action.name === 'inevery_permission_allow_once' ||
+    action.payload?.decision === 'allow'
+  );
+}
+
+function isPermissionDenyAction(action: IAction) {
+  return (
+    action.name === 'inevery_permission_deny' ||
+    action.payload?.decision === 'deny'
+  );
+}
+
+function findStepById(steps: IStep[], id: string): IStep | undefined {
+  for (const step of steps) {
+    if (step.id === id) return step;
+    const nested = findStepById(step.steps || [], id);
+    if (nested) return nested;
+  }
+  return undefined;
+}
 
 export default MessagesContainer;

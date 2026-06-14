@@ -53,8 +53,19 @@ export function ThreadHistory() {
       await fetchThreads(undefined, true);
 
       const currentPage = new URL(window.location.href);
-      if (threadId && currentPage.pathname === '/') {
-        navigate(`/thread/${threadId}`);
+      if (threadId) {
+        const workspaceMatch = currentPage.pathname.match(
+          /\/workspace\/([^/?#]+)/
+        );
+        if (workspaceMatch) {
+          navigate(
+            `/workspace/${encodeURIComponent(
+              decodeURIComponent(workspaceMatch[1])
+            )}/thread/${threadId}`
+          );
+        } else if (currentPage.pathname === '/') {
+          navigate(`/thread/${threadId}`);
+        }
       }
     };
 

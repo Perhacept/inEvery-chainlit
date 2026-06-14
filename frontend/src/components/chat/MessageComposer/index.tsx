@@ -354,14 +354,18 @@ export default function MessageComposer({
             }
           >
             <SelectTrigger
-              aria-label="Tool permission mode"
-              className="ml-1 h-8 w-[142px] rounded-full border-muted bg-background/60 px-3 text-xs"
+              aria-label={t('harnessSettings.fields.permissionMode')}
+              className="ml-1 h-8 w-[152px] rounded-full border-muted bg-background/60 px-3 text-xs"
             >
               <SelectValue />
             </SelectTrigger>
             <SelectContent align="start">
-              <SelectItem value="default">Ask approval</SelectItem>
-              <SelectItem value="bypass">Full access</SelectItem>
+              <SelectItem value="default">
+                {t('harnessSettings.fields.askForApproval')}
+              </SelectItem>
+              <SelectItem value="bypass">
+                {t('harnessSettings.fields.fullAccess')}
+              </SelectItem>
             </SelectContent>
           </Select>
           {modes.map((mode) => (

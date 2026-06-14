@@ -223,7 +223,7 @@ export function ThreadList({
           ...prev,
           threads: prev?.threads?.filter((t) => t.id !== threadIdToDelete)
         }));
-        navigate('/');
+        navigate(getPostDeletePath());
         return (
           <Translator path="threadHistory.thread.actions.delete.success" />
         );
@@ -463,4 +463,14 @@ export function ThreadList({
       ) : null}
     </>
   );
+}
+
+function getPostDeletePath() {
+  const workspaceMatch = window.location.pathname.match(
+    /\/workspace\/([^/?#]+)/
+  );
+
+  return workspaceMatch
+    ? `/workspace/${encodeURIComponent(decodeURIComponent(workspaceMatch[1]))}`
+    : '/';
 }

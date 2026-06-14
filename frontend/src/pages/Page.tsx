@@ -15,9 +15,17 @@ import { userEnvState } from 'state/user';
 
 type Props = {
   children: JSX.Element;
+  showGlobalSidebar?: boolean;
+  showHeaderNewChatButton?: boolean;
+  showRightRail?: boolean;
 };
 
-const Page = ({ children }: Props) => {
+const Page = ({
+  children,
+  showGlobalSidebar = true,
+  showHeaderNewChatButton = true,
+  showRightRail = true
+}: Props) => {
   const { config } = useConfig();
   const { data } = useAuth();
   const userEnv = useRecoilValue(userEnvState);
@@ -33,7 +41,11 @@ const Page = ({ children }: Props) => {
 
   const mainContent = (
     <div className="flex flex-col h-full w-full">
-      <Header />
+      <Header
+        showHistorySidebar={showGlobalSidebar}
+        showChatSettingsSidebar={showRightRail}
+        showNewChatButton={showHeaderNewChatButton}
+      />
       <ResizablePanelGroup
         direction="horizontal"
         className="flex flex-row flex-grow"
@@ -47,13 +59,20 @@ const Page = ({ children }: Props) => {
             {children}
           </div>
         </ResizablePanel>
-        {sideView ? <ElementSideView /> : <TaskList isMobile={false} />}
-        {showSettingsSidebar && <ChatSettingsSidebar />}
+        {showRightRail ? (
+          sideView ? (
+            <ElementSideView />
+          ) : (
+            <TaskList isMobile={false} />
+          )
+        ) : null}
+        {showRightRail && showSettingsSidebar && <ChatSettingsSidebar />}
       </ResizablePanelGroup>
     </div>
   );
 
-  const historyEnabled = config?.dataPersistence && data?.requireLogin;
+  const historyEnabled =
+    showGlobalSidebar && config?.dataPersistence && data?.requireLogin;
   const sidebarHidden = config?.ui?.default_sidebar_state === 'hidden';
 
   return (

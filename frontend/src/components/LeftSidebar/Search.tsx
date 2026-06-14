@@ -141,7 +141,7 @@ export default function SearchChats() {
                     value={`${searchQuery}-${thread.id}`}
                     onSelect={() => {
                       setOpen(false);
-                      navigate(`/thread/${thread.id}`);
+                      navigate(getThreadPath(thread));
                     }}
                   >
                     <div className="line-clamp-2">
@@ -156,4 +156,16 @@ export default function SearchChats() {
       </CommandDialog>
     </>
   );
+}
+
+function getThreadPath(thread: IThread) {
+  const currentWorkspaceMatch = window.location.pathname.match(
+    /\/workspace\/([^/?#]+)/
+  );
+  const projectId =
+    thread.metadata?.project_id || currentWorkspaceMatch?.[1];
+
+  return projectId
+    ? `/workspace/${encodeURIComponent(String(projectId))}/thread/${thread.id}`
+    : `/thread/${thread.id}`;
 }

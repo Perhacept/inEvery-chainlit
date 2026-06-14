@@ -1116,6 +1116,7 @@ async def debug_inevery_tool(request: Request, current_user: UserParam):
         scene_type=scene_type,
         mcp_enabled=settings.mcp_enabled,
         user_id=user.identifier,
+        delete_guard_enabled=settings.delete_guard_enabled,
     )
     try:
         await executor.prepare()
