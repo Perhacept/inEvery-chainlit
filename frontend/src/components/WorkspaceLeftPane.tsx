@@ -26,6 +26,7 @@ import {
   BrainCircuit,
   Code2,
   LayoutPanelLeft,
+  Workflow,
   RotateCcw,
   Save,
   Search,
@@ -47,6 +48,19 @@ type ProjectToolsDraft = {
 };
 
 const EMPTY_MCP_CONFIG: Record<string, unknown> = {};
+
+function workflowEditorUrl(projectId: string) {
+  const rootPath =
+    document
+      .querySelector('meta[property="og:root_path"]')
+      ?.getAttribute('content')
+      ?.replace(/\/$/, '') || '';
+  const basePath = rootPath
+    ? `${rootPath}/workflow-editor/index.html`
+    : '/workflow-editor/index.html';
+  const query = new URLSearchParams({ projectId });
+  return `${basePath}?${query.toString()}`;
+}
 
 function EmptyPanel({
   action,
@@ -222,6 +236,10 @@ export function WorkspaceLeftPane({ project }: LeftPaneProps) {
             <TabsTrigger value="scene" className="shrink-0 gap-2">
               <Box className="size-4" />
               {t('workspace.tabs.scene')}
+            </TabsTrigger>
+            <TabsTrigger value="workflow" className="shrink-0 gap-2">
+              <Workflow className="size-4" />
+              {t('workspace.tabs.workflow')}
             </TabsTrigger>
           </TabsList>
         </div>
@@ -458,6 +476,27 @@ export function WorkspaceLeftPane({ project }: LeftPaneProps) {
             title={t('workspace.panels.scene.title')}
             description={t('workspace.panels.scene.description')}
           />
+        </TabsContent>
+
+        <TabsContent value="workflow" className="m-0 min-h-0 flex-1">
+          <div className="flex h-full min-h-0 flex-col bg-background">
+            <div className="flex min-h-12 items-center justify-between gap-3 border-b px-4">
+              <div className="min-w-0">
+                <h3 className="truncate text-sm font-semibold">
+                  {t('workspace.panels.workflow.title')}
+                </h3>
+                <p className="truncate text-xs text-muted-foreground">
+                  {t('workspace.panels.workflow.description')}
+                </p>
+              </div>
+            </div>
+            <iframe
+              title={t('workspace.panels.workflow.title')}
+              src={workflowEditorUrl(currentProject.id)}
+              className="min-h-0 flex-1 border-0"
+              allow="clipboard-read; clipboard-write"
+            />
+          </div>
         </TabsContent>
       </Tabs>
     </div>

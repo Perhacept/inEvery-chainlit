@@ -78,6 +78,7 @@ from chainlit.user import PersistedUser, User
 from chainlit.utils import utc_now
 
 from ._utils import is_path_inside
+from .workflow_editor import register_workflow_routes
 
 if TYPE_CHECKING:
     from chainlit.element import CustomElement, ElementDict
@@ -260,6 +261,7 @@ app.add_middleware(SafariWebSocketsCompatibleGZipMiddleware)
 
 # config.run.root_path is only set when started with --root-path. Not on submounts.
 router = APIRouter(prefix=config.run.root_path)
+register_workflow_routes(app, router)
 
 
 @router.get("/public/{filename:path}")

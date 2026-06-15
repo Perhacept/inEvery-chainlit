@@ -153,6 +153,34 @@ export interface InEveryToolDebugResponse {
   errorType?: string;
 }
 
+export interface InEveryWorkflowSavePayload {
+  projectId: string;
+  workflow: {
+    nodes: unknown[];
+    edges: unknown[];
+    metadata?: Record<string, unknown>;
+  };
+}
+
+export interface InEveryWorkflowSaveResponse {
+  success: boolean;
+  projectId: string;
+  workflow: {
+    version: number;
+    nodes: unknown[];
+    edges: unknown[];
+    updatedAt: string;
+    metadata?: Record<string, unknown>;
+  };
+  project: {
+    id: string;
+    name: string;
+    scene: string;
+    updatedAt: string;
+    config: Record<string, unknown>;
+  };
+}
+
 function getWorkspaceProjectId() {
   const match = window.location.pathname.match(/\/workspace\/([^/?#]+)/);
   return match ? decodeURIComponent(match[1]) : undefined;
@@ -236,6 +264,13 @@ class ExtendedChainlitAPI extends ChainlitAPI {
     dryRun?: boolean;
   }): Promise<InEveryToolDebugResponse> {
     const res = await this.post(`/inevery/tools/debug`, payload);
+    return res.json();
+  }
+
+  async saveInEveryWorkflow(
+    payload: InEveryWorkflowSavePayload
+  ): Promise<InEveryWorkflowSaveResponse> {
+    const res = await this.post(`/api/save-workflow`, payload);
     return res.json();
   }
 
