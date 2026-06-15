@@ -18,13 +18,15 @@ type Props = {
   showGlobalSidebar?: boolean;
   showHeaderNewChatButton?: boolean;
   showRightRail?: boolean;
+  onOpenGlobalSettings?: () => void;
 };
 
 const Page = ({
   children,
   showGlobalSidebar = true,
   showHeaderNewChatButton = true,
-  showRightRail = true
+  showRightRail = true,
+  onOpenGlobalSettings
 }: Props) => {
   const { config } = useConfig();
   const { data } = useAuth();
@@ -45,6 +47,7 @@ const Page = ({
         showHistorySidebar={showGlobalSidebar}
         showChatSettingsSidebar={showRightRail}
         showNewChatButton={showHeaderNewChatButton}
+        onOpenGlobalSettings={onOpenGlobalSettings}
       />
       <ResizablePanelGroup
         direction="horizontal"

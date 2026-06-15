@@ -1,4 +1,5 @@
 import { ChangeEvent, useEffect, useMemo, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useSetRecoilState } from 'recoil';
 import { toast } from 'sonner';
 
@@ -37,6 +38,7 @@ import { useTranslation } from 'components/i18n/Translator';
 import { userEnvState } from 'state/user';
 import {
   Bug,
+  CircuitBoard,
   Download,
   FolderOpen,
   Play,
@@ -54,7 +56,6 @@ interface Props {
 }
 
 type FormState = {
-  permission_mode: 'default' | 'bypass';
   language: 'browser' | 'en-US' | 'zh-CN';
   error_max_turns: string;
   error_max_budget_usd: string;
@@ -64,7 +65,6 @@ type FormState = {
 };
 
 const DEFAULT_FORM: FormState = {
-  permission_mode: 'default',
   language: 'browser',
   error_max_turns: '8',
   error_max_budget_usd: '',
@@ -79,6 +79,7 @@ export default function HarnessSettingsDialog({
   projectId,
   sceneType
 }: Props) {
+  const navigate = useNavigate();
   const [settings, setSettings] = useState<InEveryHarnessSettingsResponse>();
   const [form, setForm] = useState<FormState>(DEFAULT_FORM);
   const [tools, setTools] = useState<InEveryToolDefinition[]>([]);
@@ -90,14 +91,13 @@ export default function HarnessSettingsDialog({
   const [isSaving, setIsSaving] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const setUserEnv = useSetRecoilState(userEnvState);
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
 
   const storagePath = settings?.path || '';
   const isDirty = useMemo(() => {
     if (!settings) return false;
     const data = settings.data;
     return (
-      form.permission_mode !== normalizePermission(data.permission_mode) ||
       form.language !== normalizeLanguage(data.language) ||
       Number(form.error_max_turns || 8) !== Number(data.error_max_turns || 8) ||
       form.error_max_budget_usd !==
@@ -144,8 +144,12 @@ export default function HarnessSettingsDialog({
       .catch((error) =>
         toast.error(error instanceof Error ? error.message : String(error))
       );
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
     apiClient
-      .listInEveryTools()
+      .listInEveryTools(resolveToolLocale(form.language, i18n.language))
       .then((payload) => {
         setTools(payload);
         setSelectedToolName((current) => current || payload[0]?.name || '');
@@ -153,7 +157,7 @@ export default function HarnessSettingsDialog({
       .catch((error) =>
         toast.error(error instanceof Error ? error.message : String(error))
       );
-  }, [open]);
+  }, [form.language, i18n.language, open]);
 
   const syncUserEnv = (userEnv: Record<string, string>) => {
     setUserEnv((previous) => {
@@ -230,6 +234,7 @@ export default function HarnessSettingsDialog({
         arguments: parsedInput,
         projectId,
         sceneType,
+        language: resolveToolLocale(form.language, i18n.language),
         dryRun
       });
       setDebugResult(response);
@@ -247,6 +252,11 @@ export default function HarnessSettingsDialog({
     } finally {
       setIsDebugging(false);
     }
+  };
+
+  const openModulesPage = () => {
+    onOpenChange(false);
+    navigate('/harness/modules');
   };
 
   return (
@@ -272,38 +282,15 @@ export default function HarnessSettingsDialog({
               <Wrench className="mr-2 size-4" />
               {t('harnessSettings.tabs.tools')}
             </TabsTrigger>
+            <TabsTrigger value="modules">
+              <CircuitBoard className="mr-2 size-4" />
+              {t('harnessSettings.tabs.modules')}
+            </TabsTrigger>
           </TabsList>
 
           <TabsContent value="settings" className="max-h-[58vh] overflow-y-auto">
             <div className="grid gap-5 py-2 pr-1">
               <section className="grid gap-3">
-                <div className="grid gap-2">
-                  <Label htmlFor="permission-mode">
-                    {t('harnessSettings.fields.permissionMode')}
-                  </Label>
-                  <Select
-                    value={form.permission_mode}
-                    onValueChange={(value) =>
-                      setForm((current) => ({
-                        ...current,
-                        permission_mode: value as FormState['permission_mode']
-                      }))
-                    }
-                  >
-                    <SelectTrigger id="permission-mode">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="default">
-                        {t('harnessSettings.fields.askForApproval')}
-                      </SelectItem>
-                      <SelectItem value="bypass">
-                        {t('harnessSettings.fields.fullAccess')}
-                      </SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
                 <div className="grid gap-2">
                   <Label htmlFor="ui-language">
                     {t('harnessSettings.fields.language')}
@@ -351,6 +338,9 @@ export default function HarnessSettingsDialog({
                         }))
                       }
                     />
+                    <p className="text-xs leading-5 text-muted-foreground">
+                      {t('harnessSettings.fields.maxTurnsDescription')}
+                    </p>
                   </div>
                   <div className="grid gap-2">
                     <Label htmlFor="max-budget">
@@ -545,6 +535,34 @@ export default function HarnessSettingsDialog({
               ) : null}
             </div>
           </TabsContent>
+
+          <TabsContent value="modules" className="max-h-[58vh] overflow-y-auto">
+            <div className="grid gap-4 py-2 pr-1">
+              <section className="rounded-md border bg-muted/30 p-5">
+                <div className="flex items-start gap-3">
+                  <div className="flex size-10 shrink-0 items-center justify-center rounded-md border bg-background">
+                    <CircuitBoard className="size-5 text-muted-foreground" />
+                  </div>
+                  <div className="min-w-0">
+                    <h3 className="font-semibold">
+                      {t('harnessSettings.modules.title')}
+                    </h3>
+                    <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                      {t('harnessSettings.modules.description')}
+                    </p>
+                    <Button
+                      type="button"
+                      className="mt-4"
+                      onClick={openModulesPage}
+                    >
+                      <CircuitBoard className="mr-2 size-4" />
+                      {t('harnessSettings.modules.open')}
+                    </Button>
+                  </div>
+                </div>
+              </section>
+            </div>
+          </TabsContent>
         </Tabs>
 
         <DialogFooter className="gap-2 sm:justify-between">
@@ -599,7 +617,6 @@ function SettingSwitch({
 
 function settingsToForm(settings: InEveryHarnessSettings): FormState {
   return {
-    permission_mode: normalizePermission(settings.permission_mode),
     language: normalizeLanguage(settings.language),
     error_max_turns: String(settings.error_max_turns || 8),
     error_max_budget_usd:
@@ -617,7 +634,6 @@ function formToSettings(form: FormState): Partial<InEveryHarnessSettings> {
       ? null
       : Number(form.error_max_budget_usd);
   return {
-    permission_mode: form.permission_mode,
     language: form.language,
     error_max_turns: Number.isFinite(turns) && turns > 0 ? turns : 8,
     error_max_budget_usd:
@@ -628,10 +644,13 @@ function formToSettings(form: FormState): Partial<InEveryHarnessSettings> {
   };
 }
 
-function normalizePermission(value: unknown): 'default' | 'bypass' {
-  return value === 'bypass' || value === 'full_access' ? 'bypass' : 'default';
-}
-
 function normalizeLanguage(value: unknown): 'browser' | 'en-US' | 'zh-CN' {
   return value === 'en-US' || value === 'zh-CN' ? value : 'browser';
+}
+
+function resolveToolLocale(
+  value: FormState['language'],
+  fallbackLanguage: string
+): string {
+  return value === 'browser' ? fallbackLanguage : value;
 }

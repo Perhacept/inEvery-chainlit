@@ -4,6 +4,7 @@ import { Navigate, createBrowserRouter } from 'react-router-dom';
 import AuthCallback from 'pages/AuthCallback';
 import Element from 'pages/Element';
 import Env from 'pages/Env';
+import HarnessModules from 'pages/HarnessModules';
 import Login from 'pages/Login';
 import Playground from 'pages/Playground';
 import Thread from 'pages/Thread';
@@ -26,6 +27,10 @@ export const router = createBrowserRouter(
     {
       path: '/workspace/:projectId/thread/:threadId',
       element: <Workspace />
+    },
+    {
+      path: '/harness/modules',
+      element: <HarnessModules />
     },
     {
       path: '/env',

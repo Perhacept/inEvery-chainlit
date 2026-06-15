@@ -56,8 +56,55 @@ export interface CreateInEveryProjectPayload {
   config?: Record<string, unknown>;
 }
 
+export interface UpdateInEveryProjectPayload {
+  name?: string;
+  scene?: InEverySceneType;
+  config?: Record<string, unknown>;
+}
+
+export type InEveryMcpTransport =
+  | 'stdio'
+  | 'sse'
+  | 'streamable-http'
+  | 'streamable_http'
+  | string;
+
+export interface InEveryProjectMcpServerConfig {
+  enabled?: boolean;
+  transport?: InEveryMcpTransport;
+  type?: InEveryMcpTransport;
+  command?: string;
+  args?: string[];
+  env?: Record<string, string>;
+  cwd?: string;
+  url?: string;
+  endpoint?: string;
+  headers?: Record<string, string>;
+  timeout?: number;
+  sseReadTimeout?: number;
+  sse_read_timeout?: number;
+  terminateOnClose?: boolean;
+  terminate_on_close?: boolean;
+  [key: string]: unknown;
+}
+
+export interface InEveryProjectMcpConfig {
+  servers?: Record<string, InEveryProjectMcpServerConfig>;
+  mcpServers?: Record<string, InEveryProjectMcpServerConfig>;
+  [key: string]: unknown;
+}
+
+export interface InEveryProjectToolsConfig {
+  enabled?: string[];
+  enabledTools?: string[];
+  disabled?: string[];
+  disabledTools?: string[];
+  mcp?: InEveryProjectMcpConfig;
+  [key: string]: unknown;
+}
+
 export interface InEveryHarnessSettings {
-  permission_mode: 'default' | 'bypass' | string;
+  permission_mode?: 'default' | 'bypass' | string;
   error_max_turns: number;
   error_max_budget_usd: number | null;
   hooks_enabled: boolean;
@@ -155,7 +202,7 @@ class ExtendedChainlitAPI extends ChainlitAPI {
 
   async updateInEveryProject(
     projectId: string,
-    payload: Partial<CreateInEveryProjectPayload>
+    payload: UpdateInEveryProjectPayload
   ): Promise<InEveryProject> {
     const res = await this.put(`/inevery/projects/${projectId}`, payload);
     return res.json();
@@ -173,8 +220,9 @@ class ExtendedChainlitAPI extends ChainlitAPI {
     return res.json();
   }
 
-  async listInEveryTools(): Promise<InEveryToolDefinition[]> {
-    const res = await this.get(`/inevery/tools`);
+  async listInEveryTools(language?: string): Promise<InEveryToolDefinition[]> {
+    const query = language ? `?language=${encodeURIComponent(language)}` : '';
+    const res = await this.get(`/inevery/tools${query}`);
     const payload = await res.json();
     return payload.data || [];
   }
@@ -184,6 +232,7 @@ class ExtendedChainlitAPI extends ChainlitAPI {
     arguments: Record<string, unknown>;
     projectId?: string;
     sceneType?: InEverySceneType;
+    language?: string;
     dryRun?: boolean;
   }): Promise<InEveryToolDebugResponse> {
     const res = await this.post(`/inevery/tools/debug`, payload);

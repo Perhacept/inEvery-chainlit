@@ -1,4 +1,10 @@
-import { type CSSProperties, useEffect, useRef, useState } from 'react';
+import {
+  type CSSProperties,
+  type ReactNode,
+  useEffect,
+  useRef,
+  useState
+} from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useSetRecoilState } from 'recoil';
 import { toast } from 'sonner';
@@ -21,7 +27,13 @@ import Translator, { useTranslation } from 'components/i18n/Translator';
 import Page from 'pages/Page';
 import { userEnvState } from 'state/user';
 import { Button } from '@/components/ui/button';
-import { Settings2 } from 'lucide-react';
+import { cn } from '@/lib/utils';
+import {
+  PanelLeftClose,
+  PanelLeftOpen,
+  PanelRightClose,
+  PanelRightOpen
+} from 'lucide-react';
 import {
   ResizableHandle,
   ResizablePanel,
@@ -29,9 +41,14 @@ import {
 } from '@/components/ui/resizable';
 import {
   SidebarProvider,
-  SidebarTrigger,
   useSidebar
 } from '@/components/ui/sidebar';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger
+} from '@/components/ui/tooltip';
 
 interface ProjectSessionBridgeProps {
   project: InEveryProject;
@@ -45,49 +62,86 @@ interface WorkspaceChatPanelsProps {
   project: InEveryProject;
   chatReady: boolean;
   onBackToPlayground: () => void;
-  onOpenSettings: () => void;
+  onCollapseChat: () => void;
 }
 
 function WorkspaceChatPanels({
   project,
   chatReady,
   onBackToPlayground,
-  onOpenSettings
+  onCollapseChat
 }: WorkspaceChatPanelsProps) {
   const { t } = useTranslation();
-  const { open } = useSidebar();
+  const { isMobile, open, openMobile, setOpen, setOpenMobile } = useSidebar();
+  const historyOpen = isMobile ? openMobile : open;
+  const showHistoryPanel = open && !isMobile;
+  const historyToggleLabel = historyOpen
+    ? t('workspace.chat.history.close')
+    : t('workspace.chat.history.open');
+  const toggleHistory = () => {
+    if (isMobile) {
+      setOpenMobile(!openMobile);
+      return;
+    }
+    setOpen(!open);
+  };
 
   return (
     <ResizablePanelGroup
-      key={open ? 'with-chat-sidebar' : 'chat-only'}
+      key={showHistoryPanel ? 'with-chat-history' : 'chat-only'}
       direction="horizontal"
       className="h-full w-full"
     >
-      <ResizablePanel minSize={30} defaultSize={open ? 70 : 100}>
+      {showHistoryPanel ? (
+        <>
+          <ResizablePanel
+            minSize={18}
+            defaultSize={24}
+            className="min-w-[220px]"
+          >
+            <LeftSidebar
+              side="left"
+              collapsible="offcanvas"
+              embedded
+              className="border-r"
+              showRail={false}
+            />
+          </ResizablePanel>
+          <ResizableHandle withHandle />
+        </>
+      ) : null}
+      <ResizablePanel minSize={30} defaultSize={showHistoryPanel ? 76 : 100}>
         <aside className="flex h-full min-h-0 w-full min-w-[320px] flex-col bg-background">
           <div className="flex min-h-16 items-center justify-between gap-3 border-b px-4">
-            <div className="min-w-0">
-              <h2 className="truncate font-semibold">
-                {t('workspace.chat.title')}
-              </h2>
-              <p className="truncate text-xs text-muted-foreground">
-                {project.name}
-              </p>
+            <div className="flex min-w-0 items-center gap-2">
+              <WorkspaceTooltipButton
+                label={historyToggleLabel}
+                onClick={toggleHistory}
+                className="hidden lg:inline-flex"
+              >
+                {historyOpen ? (
+                  <PanelLeftClose className="size-4" />
+                ) : (
+                  <PanelLeftOpen className="size-4" />
+                )}
+              </WorkspaceTooltipButton>
+              <div className="min-w-0">
+                <h2 className="truncate font-semibold">
+                  {t('workspace.chat.title')}
+                </h2>
+                <p className="truncate text-xs text-muted-foreground">
+                  {project.name}
+                </p>
+              </div>
             </div>
             <div className="flex shrink-0 items-center gap-2">
-              <SidebarTrigger
-                aria-label={t('workspace.chat.toggleSidebar')}
+              <WorkspaceTooltipButton
+                label={t('workspace.chat.collapsePanel')}
+                onClick={onCollapseChat}
                 className="hidden lg:inline-flex"
-              />
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={onOpenSettings}
               >
-                <Settings2 className="mr-2 size-4" />
-                {t('workspace.actions.settings')}
-              </Button>
+                <PanelRightClose className="size-4" />
+              </WorkspaceTooltipButton>
               <button
                 type="button"
                 onClick={onBackToPlayground}
@@ -108,25 +162,58 @@ function WorkspaceChatPanels({
           </div>
         </aside>
       </ResizablePanel>
-      {open ? (
-        <>
-          <ResizableHandle withHandle className="hidden lg:flex" />
-          <ResizablePanel
-            minSize={18}
-            defaultSize={30}
-            className="hidden min-w-[220px] lg:flex"
-          >
-            <LeftSidebar
-              side="right"
-              collapsible="offcanvas"
-              embedded
-              className="border-l"
-              showRail
-            />
-          </ResizablePanel>
-        </>
-      ) : null}
     </ResizablePanelGroup>
+  );
+}
+
+function WorkspaceTooltipButton({
+  children,
+  className,
+  label,
+  onClick
+}: {
+  children: ReactNode;
+  className?: string;
+  label: string;
+  onClick: () => void;
+}) {
+  return (
+    <TooltipProvider>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            aria-label={label}
+            onClick={onClick}
+            className={cn(
+              'h-8 w-8 text-muted-foreground hover:text-foreground',
+              className
+            )}
+          >
+            {children}
+            <span className="sr-only">{label}</span>
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>{label}</TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
+}
+
+function ProjectChatCollapsedRail({ onOpen }: { onOpen: () => void }) {
+  const { t } = useTranslation();
+
+  return (
+    <div className="flex h-12 w-full shrink-0 items-center justify-center border-t bg-background px-2 py-2 lg:h-full lg:w-12 lg:items-start lg:border-l lg:border-t-0 lg:py-3">
+      <WorkspaceTooltipButton
+        label={t('workspace.chat.expandPanel')}
+        onClick={onOpen}
+      >
+        <PanelRightOpen className="size-4" />
+      </WorkspaceTooltipButton>
+    </div>
   );
 }
 
@@ -226,6 +313,7 @@ export default function Workspace() {
   const [error, setError] = useState<string>();
   const [isLoading, setIsLoading] = useState(true);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [projectChatOpen, setProjectChatOpen] = useState(true);
   const startNew = location.pathname.endsWith('/new');
   const targetThreadId = project && !startNew
     ? routeThreadId || project.threadId
@@ -295,6 +383,7 @@ export default function Workspace() {
       showGlobalSidebar={false}
       showHeaderNewChatButton={false}
       showRightRail={false}
+      onOpenGlobalSettings={() => setSettingsOpen(true)}
     >
       <div className="flex h-full min-h-0 w-full flex-col overflow-hidden lg:flex-row">
         <ProjectSessionBridge
@@ -305,23 +394,27 @@ export default function Workspace() {
           newChatKey={location.search}
         />
         <WorkspaceLeftPane project={project} />
-        <SidebarProvider
-          defaultOpen
-          persistState={false}
-          className="min-h-[44vh] w-full border-t bg-background lg:min-h-0 lg:flex-1 lg:border-l lg:border-t-0"
-          style={
-            {
-              '--sidebar-width': '100%'
-            } as CSSProperties
-          }
-        >
-          <WorkspaceChatPanels
-            project={project}
-            chatReady={chatReady}
-            onBackToPlayground={() => navigate('/')}
-            onOpenSettings={() => setSettingsOpen(true)}
-          />
-        </SidebarProvider>
+        {projectChatOpen ? (
+          <SidebarProvider
+            defaultOpen
+            persistState={false}
+            className="min-h-[44vh] w-full border-t bg-background lg:min-h-0 lg:flex-1 lg:border-l lg:border-t-0"
+            style={
+              {
+                '--sidebar-width': '100%'
+              } as CSSProperties
+            }
+          >
+            <WorkspaceChatPanels
+              project={project}
+              chatReady={chatReady}
+              onBackToPlayground={() => navigate('/')}
+              onCollapseChat={() => setProjectChatOpen(false)}
+            />
+          </SidebarProvider>
+        ) : (
+          <ProjectChatCollapsedRail onOpen={() => setProjectChatOpen(true)} />
+        )}
         <HarnessSettingsDialog
           open={settingsOpen}
           onOpenChange={setSettingsOpen}

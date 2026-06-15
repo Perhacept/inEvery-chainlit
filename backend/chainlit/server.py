@@ -10,7 +10,7 @@ import urllib.parse
 import webbrowser
 from contextlib import AsyncExitStack, asynccontextmanager
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, List, Optional, Union, cast
+from typing import TYPE_CHECKING, Any, List, Mapping, Optional, Union, cast
 
 import socketio
 from fastapi import (
@@ -1033,19 +1033,127 @@ async def update_inevery_settings(request: Request, current_user: UserParam):
 
 
 @router.get("/inevery/tools")
-async def list_inevery_tools(current_user: UserParam):
+async def list_inevery_tools(
+    current_user: UserParam,
+    project_id: Optional[str] = Query(None, alias="projectId"),
+    scene_type: Optional[str] = Query(None, alias="sceneType"),
+    language: Optional[str] = Query(None),
+):
     """List harness tools available from the local tool registry."""
 
-    _require_inevery_user(current_user)
+    user = _require_inevery_user(current_user)
+
+    if project_id:
+        return JSONResponse(
+            content=await _inevery_project_tools_payload(
+                user,
+                project_id,
+                scene_type=scene_type,
+                language=language,
+            )
+        )
 
     try:
         from harnesscore.tool_executor import all_registered_tools
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
-    tools = [_inevery_tool_to_dict(tool) for tool in all_registered_tools(include_disabled=True)]
+    settings = await _inevery_user_settings(user)
+    locale = language or str(settings.get("language") or "")
+    tools = [
+        _inevery_tool_to_dict(tool, language=locale)
+        for tool in all_registered_tools(include_disabled=True)
+    ]
     tools.sort(key=lambda item: (item["category"], item["name"]))
     return JSONResponse(content={"data": tools})
+
+
+@router.get("/inevery/projects/{project_id}/tools")
+async def list_inevery_project_tools(
+    project_id: str,
+    current_user: UserParam,
+    scene_type: Optional[str] = Query(None, alias="sceneType"),
+    language: Optional[str] = Query(None),
+):
+    """List runtime-enabled harness tools for one project, including MCP tools."""
+
+    user = _require_inevery_user(current_user)
+    return JSONResponse(
+        content=await _inevery_project_tools_payload(
+            user,
+            project_id,
+            scene_type=scene_type,
+            language=language,
+        )
+    )
+
+
+@router.put("/inevery/projects/{project_id}/tools")
+async def update_inevery_project_tools(
+    project_id: str,
+    request: Request,
+    current_user: UserParam,
+):
+    """Persist one project's enabled/disabled tool config."""
+
+    user = _require_inevery_user(current_user)
+    data_layer = _require_inevery_data_layer()
+    if not hasattr(data_layer, "update_project"):
+        raise HTTPException(status_code=400, detail="Project persistence is not enabled")
+
+    payload = await request.json()
+    if not isinstance(payload, dict):
+        raise HTTPException(status_code=400, detail="Tool config payload must be an object")
+    tools_config = payload.get("tools") if isinstance(payload.get("tools"), dict) else payload
+
+    project = await data_layer.update_project(
+        user.identifier,
+        project_id,
+        config={"tools": tools_config},
+    )
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    return JSONResponse(
+        content=await _inevery_project_tools_payload(user, project_id)
+    )
+
+
+@router.get("/inevery/projects/{project_id}/mcp")
+async def get_inevery_project_mcp(project_id: str, current_user: UserParam):
+    """Get project MCP config plus currently discoverable MCP tools."""
+
+    user = _require_inevery_user(current_user)
+    return JSONResponse(content=await _inevery_project_mcp_payload(user, project_id))
+
+
+@router.put("/inevery/projects/{project_id}/mcp")
+async def update_inevery_project_mcp(
+    project_id: str,
+    request: Request,
+    current_user: UserParam,
+):
+    """Persist project MCP config and sync the workspace MCP file."""
+
+    user = _require_inevery_user(current_user)
+    data_layer = _require_inevery_data_layer()
+    if not hasattr(data_layer, "update_project"):
+        raise HTTPException(status_code=400, detail="Project persistence is not enabled")
+
+    payload = await request.json()
+    if not isinstance(payload, dict):
+        raise HTTPException(status_code=400, detail="MCP config payload must be an object")
+    mcp_config = payload.get("mcp") if isinstance(payload.get("mcp"), dict) else payload
+
+    project = await data_layer.update_project(
+        user.identifier,
+        project_id,
+        config={"mcp": mcp_config},
+    )
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    return JSONResponse(content=await _inevery_project_mcp_payload(user, project_id))
 
 
 @router.post("/inevery/tools/debug")
@@ -1068,11 +1176,16 @@ async def debug_inevery_tool(request: Request, current_user: UserParam):
     project_id = str(payload.get("projectId") or "").strip()
     scene_type = str(payload.get("sceneType") or "").strip()
     dry_run = bool(payload.get("dryRun", True))
+    language = str(payload.get("language") or "").strip()
 
     try:
         from harnesscore.interfaces import ToolCall
         from harnesscore.settings import HarnessUserSettings
-        from harnesscore.tool_executor import AsyncToolExecutor, all_registered_tools
+        from harnesscore.tool_executor import (
+            AsyncToolExecutor,
+            all_registered_tools,
+            tool_filters_from_project_config,
+        )
         from harnesscore.workspace import WorkspaceManager
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
@@ -1086,6 +1199,7 @@ async def debug_inevery_tool(request: Request, current_user: UserParam):
         raise HTTPException(status_code=404, detail=f"Tool not found: {tool_name}")
 
     settings_payload: dict[str, Any] = {}
+    project_config: dict[str, Any] = {}
     workspace: Any | None = None
     executor: Any | None = None
     data_layer = get_data_layer()
@@ -1095,6 +1209,8 @@ async def debug_inevery_tool(request: Request, current_user: UserParam):
         project = await data_layer.get_project(user.identifier, project_id)
         if not project:
             raise HTTPException(status_code=404, detail="Project not found")
+        if isinstance(project.get("config"), dict):
+            project_config = project["config"]
         if not scene_type:
             scene_type = str(project.get("scene") or "code")
     else:
@@ -1108,15 +1224,23 @@ async def debug_inevery_tool(request: Request, current_user: UserParam):
             settings_response.get("data") if isinstance(settings_response, dict) else {}
         ) or {}
     settings = HarnessUserSettings.from_mapping(settings_payload)
+    enabled_tools, disabled_tools = tool_filters_from_project_config(project_config)
+    project_mcp_config = (
+        project_config.get("mcp") if isinstance(project_config.get("mcp"), dict) else {}
+    )
+    project_mcp_enabled = bool(project_mcp_config.get("enabled", True))
 
     executor = AsyncToolExecutor(
         workspace,
         [requested_tool],
-        permission_mode=settings.permission_mode,
+        permission_mode="default",
         scene_type=scene_type,
-        mcp_enabled=settings.mcp_enabled,
+        mcp_enabled=settings.mcp_enabled and project_mcp_enabled,
         user_id=user.identifier,
         delete_guard_enabled=settings.delete_guard_enabled,
+        enabled_tools=enabled_tools,
+        disabled_tools=disabled_tools,
+        language=language or settings.language,
     )
     try:
         await executor.prepare()
@@ -1132,7 +1256,7 @@ async def debug_inevery_tool(request: Request, current_user: UserParam):
             return JSONResponse(
                 content={
                     "dryRun": True,
-                    "tool": _inevery_tool_to_dict(tool),
+                    "tool": _inevery_tool_to_dict(tool, language=language or settings.language),
                     "input": arguments,
                     "validatedInput": validated_payload,
                     "workspace": workspace.relative_project_dir,
@@ -1150,7 +1274,7 @@ async def debug_inevery_tool(request: Request, current_user: UserParam):
         return JSONResponse(
             content={
                 "dryRun": False,
-                "tool": _inevery_tool_to_dict(tool),
+                "tool": _inevery_tool_to_dict(tool, language=language or settings.language),
                 "input": arguments,
                 "validatedInput": validated_payload,
                 "result": {
@@ -1171,7 +1295,10 @@ async def debug_inevery_tool(request: Request, current_user: UserParam):
             status_code=400,
             content={
                 "dryRun": dry_run,
-                "tool": _inevery_tool_to_dict(requested_tool),
+                "tool": _inevery_tool_to_dict(
+                    requested_tool,
+                    language=language or settings.language,
+                ),
                 "input": arguments,
                 "error": str(exc),
                 "errorType": exc.__class__.__name__,
@@ -1183,20 +1310,163 @@ async def debug_inevery_tool(request: Request, current_user: UserParam):
             await executor.aclose()
 
 
-def _inevery_tool_to_dict(tool: Any) -> dict[str, Any]:
-    schema = tool.to_openai_schema()
+async def _inevery_project_tools_payload(
+    user: Any,
+    project_id: str,
+    *,
+    scene_type: str | None = None,
+    language: str | None = None,
+) -> dict[str, Any]:
+    project = await _inevery_project_for_user(user, project_id)
+    settings = await _inevery_user_settings(user)
+
+    try:
+        from harnesscore.settings import HarnessUserSettings
+        from harnesscore.tool_executor import (
+            AsyncToolExecutor,
+            default_code_tools,
+            tool_filters_from_project_config,
+        )
+        from harnesscore.workspace import WorkspaceManager
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+    project_config = project.get("config") if isinstance(project.get("config"), dict) else {}
+    project_mcp = _inevery_project_mcp_config(project)
+    enabled_tools, disabled_tools = tool_filters_from_project_config(project_config)
+    harness_settings = HarnessUserSettings.from_mapping(settings)
+    mcp_runtime_enabled = harness_settings.mcp_enabled and bool(project_mcp["enabled"])
+    workspace = WorkspaceManager(project["id"])
+    executor = AsyncToolExecutor(
+        workspace,
+        default_code_tools(),
+        permission_mode="default",
+        scene_type=scene_type or str(project.get("scene") or "code"),
+        mcp_enabled=mcp_runtime_enabled,
+        user_id=user.identifier,
+        delete_guard_enabled=harness_settings.delete_guard_enabled,
+        enabled_tools=enabled_tools,
+        disabled_tools=disabled_tools,
+        language=language or harness_settings.language,
+    )
+    try:
+        await executor.prepare()
+        tools = [
+            _inevery_tool_to_dict(tool, language=language or harness_settings.language)
+            for tool in executor._primary_tools()
+        ]
+        tools.sort(key=lambda item: (item["category"], item["name"]))
+        mcp_tools = [
+            item for item in tools if str(item["name"]).startswith("mcp__")
+        ]
+        return {
+            "data": tools,
+            "project": _inevery_project_summary(project),
+            "workspace": workspace.relative_project_dir,
+            "filters": {
+                "enabled": enabled_tools,
+                "disabled": disabled_tools,
+            },
+            "mcp": {
+                "enabled": mcp_runtime_enabled,
+                "settingsEnabled": harness_settings.mcp_enabled,
+                "projectEnabled": project_mcp["enabled"],
+                "servers": project_mcp["servers"],
+                "tools": mcp_tools,
+            },
+        }
+    finally:
+        await executor.aclose()
+
+
+async def _inevery_project_mcp_payload(user: Any, project_id: str) -> dict[str, Any]:
+    tools_payload = await _inevery_project_tools_payload(user, project_id)
+    project = tools_payload["project"]
+    mcp = tools_payload["mcp"]
+    return {
+        "project": project,
+        "workspace": tools_payload["workspace"],
+        "enabled": mcp["enabled"],
+        "config": {
+            "enabled": mcp["projectEnabled"],
+            "servers": mcp["servers"],
+        },
+        "tools": mcp["tools"],
+        "settingsEnabled": mcp["settingsEnabled"],
+    }
+
+
+async def _inevery_project_for_user(user: Any, project_id: str) -> dict[str, Any]:
+    data_layer = _require_inevery_data_layer()
+    if not hasattr(data_layer, "get_project"):
+        raise HTTPException(status_code=400, detail="Project persistence is not enabled")
+    project = await data_layer.get_project(user.identifier, project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    return project
+
+
+async def _inevery_user_settings(user: Any) -> dict[str, Any]:
+    data_layer = get_data_layer()
+    if not data_layer or not hasattr(data_layer, "get_harness_settings"):
+        return {}
+    settings_response = await data_layer.get_harness_settings(user.identifier)
+    if not isinstance(settings_response, dict):
+        return {}
+    data = settings_response.get("data")
+    return data if isinstance(data, dict) else {}
+
+
+def _inevery_project_summary(project: Mapping[str, Any]) -> dict[str, Any]:
+    return {
+        "id": project.get("id"),
+        "name": project.get("name"),
+        "scene": project.get("scene") or "code",
+        "threadId": project.get("threadId"),
+        "config": project.get("config") if isinstance(project.get("config"), dict) else {},
+    }
+
+
+def _inevery_project_mcp_config(project: Mapping[str, Any]) -> dict[str, Any]:
+    config_payload = project.get("config")
+    if not isinstance(config_payload, dict):
+        return {"enabled": True, "servers": {}}
+    mcp = config_payload.get("mcp")
+    if not isinstance(mcp, dict):
+        return {"enabled": True, "servers": {}}
+    servers = mcp.get("servers") if isinstance(mcp.get("servers"), dict) else {}
+    return {
+        "enabled": bool(mcp.get("enabled", True)),
+        "servers": servers,
+    }
+
+
+def _inevery_tool_to_dict(tool: Any, *, language: str | None = None) -> dict[str, Any]:
+    schema = tool.to_localized_openai_schema(language)
+    function = schema.get("function", {}) if isinstance(schema, dict) else {}
+    description = (
+        function.get("description")
+        if isinstance(function, dict)
+        else getattr(tool, "description", "")
+    )
+    try:
+        from harnesscore.tools.localization import localize_search_hint
+    except Exception:
+        search_hint = getattr(tool, "search_hint", "")
+    else:
+        search_hint = localize_search_hint(getattr(tool, "search_hint", ""), language)
     return {
         "name": tool.name,
         "aliases": list(getattr(tool, "aliases", ()) or ()),
-        "description": getattr(tool, "description", ""),
+        "description": description or "",
         "category": getattr(tool, "category", "misc"),
         "enabled": bool(tool.enabled()),
         "deferred": bool(getattr(tool, "should_defer", False)),
         "readOnly": bool(tool.read_only(None)),
         "destructive": bool(tool.destructive(None)),
         "concurrencySafe": bool(tool.concurrency_safe(None)),
-        "searchHint": getattr(tool, "search_hint", ""),
-        "schema": schema.get("function", {}).get("parameters") or {},
+        "searchHint": search_hint,
+        "schema": function.get("parameters") if isinstance(function, dict) else {},
     }
 
 
@@ -1211,6 +1481,90 @@ def _json_safe(value: Any) -> Any:
         return json.loads(json.dumps(value, ensure_ascii=False, default=str))
     except TypeError:
         return str(value)
+
+
+async def _sync_chainlit_mcp_connection_to_project(
+    current_user: Any,
+    session: Any,
+    payload: Any,
+    *,
+    command: str,
+    args: list[str],
+    env: Mapping[str, str],
+) -> None:
+    user = current_user or getattr(session, "user", None)
+    project_id = _inevery_project_id_from_session(session)
+    if not user or not project_id:
+        return
+
+    server_config: dict[str, Any]
+    if payload.clientType == "stdio":
+        server_config = {
+            "transport": "stdio",
+            "command": command,
+            "args": list(args),
+        }
+        if env:
+            server_config["env"] = dict(env)
+    elif payload.clientType == "streamable-http":
+        server_config = {
+            "transport": "streamable-http",
+            "url": getattr(payload, "url", ""),
+        }
+        headers = getattr(payload, "headers", None)
+        if headers:
+            server_config["headers"] = dict(headers)
+    else:
+        server_config = {
+            "transport": "sse",
+            "url": getattr(payload, "url", ""),
+        }
+        headers = getattr(payload, "headers", None)
+        if headers:
+            server_config["headers"] = dict(headers)
+
+    await _update_project_mcp_servers(
+        user,
+        project_id,
+        {str(payload.name): server_config},
+    )
+
+
+async def _remove_chainlit_mcp_connection_from_project(
+    current_user: Any,
+    session: Any,
+    name: str,
+) -> None:
+    user = current_user or getattr(session, "user", None)
+    project_id = _inevery_project_id_from_session(session)
+    if not user or not project_id:
+        return
+    await _update_project_mcp_servers(user, project_id, {str(name): None})
+
+
+async def _update_project_mcp_servers(
+    user: Any,
+    project_id: str,
+    servers: Mapping[str, Any],
+) -> None:
+    data_layer = get_data_layer()
+    if not data_layer or not hasattr(data_layer, "update_project"):
+        return
+    try:
+        await data_layer.update_project(
+            user.identifier,
+            project_id,
+            config={"mcp": {"servers": dict(servers)}},
+        )
+    except Exception:
+        logger.debug("Failed to sync MCP connection into project config", exc_info=True)
+
+
+def _inevery_project_id_from_session(session: Any) -> str:
+    env = getattr(session, "user_env", None) or {}
+    if not isinstance(env, dict):
+        return ""
+    return str(env.get("inevery_project_id") or env.get("project_id") or "").strip()
 
 
 @router.put("/feedback")
@@ -1681,6 +2035,10 @@ async def connect_mcp(
             detail="This app does not support MCP.",
         )
 
+    env_from_cmd: dict[str, str] = {}
+    command = ""
+    args: list[str] = []
+
     # Disconnect previous session for this name (reconnection)
     if payload.name in session.mcp_sessions:
         old_mcp = session.mcp_sessions.pop(payload.name)
@@ -1872,25 +2230,35 @@ async def connect_mcp(
     session.mcp_sessions[mcp_connection.name] = mcp_session_obj
 
     tool_list = await mcp_client_session.list_tools()
+    mcp_payload = {
+        "name": payload.name,
+        "tools": [{"name": t.name} for t in tool_list.tools],
+        "clientType": payload.clientType,
+        "command": payload.fullCommand
+        if payload.clientType == "stdio"
+        else None,
+        "url": getattr(payload, "url", None)
+        if payload.clientType in ["sse", "streamable-http"]
+        else None,
+        # Include optional headers for SSE and streamable-http connections
+        "headers": getattr(payload, "headers", None)
+        if payload.clientType in ["sse", "streamable-http"]
+        else None,
+    }
+
+    await _sync_chainlit_mcp_connection_to_project(
+        current_user,
+        session,
+        payload,
+        command=command,
+        args=args,
+        env=env_from_cmd,
+    )
 
     return JSONResponse(
         content={
             "success": True,
-            "mcp": {
-                "name": payload.name,
-                "tools": [{"name": t.name} for t in tool_list.tools],
-                "clientType": payload.clientType,
-                "command": payload.fullCommand
-                if payload.clientType == "stdio"
-                else None,
-                "url": getattr(payload, "url", None)
-                if payload.clientType in ["sse", "streamable-http"]
-                else None,
-                # Include optional headers for SSE and streamable-http connections
-                "headers": getattr(payload, "headers", None)
-                if payload.clientType in ["sse", "streamable-http"]
-                else None,
-            },
+            "mcp": mcp_payload,
         }
     )
 
@@ -1928,6 +2296,11 @@ async def disconnect_mcp(
             )
         finally:
             await mcp_session_obj.close()
+        await _remove_chainlit_mcp_connection_from_project(
+            current_user,
+            session,
+            payload.name,
+        )
 
     return JSONResponse(content={"success": True})
 

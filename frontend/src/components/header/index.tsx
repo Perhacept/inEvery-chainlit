@@ -14,12 +14,14 @@ import ButtonLink from '@/components/ButtonLink';
 import { Settings } from '@/components/icons/Settings';
 import { Button } from '@/components/ui/button';
 import { useSidebar } from '@/components/ui/sidebar';
+import { Settings2 } from 'lucide-react';
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger
 } from '@/components/ui/tooltip';
 import { Translator } from 'components/i18n';
+import { useTranslation } from 'components/i18n/Translator';
 
 import { chatSettingsSidebarOpenState } from '@/state/project';
 
@@ -36,18 +38,21 @@ interface HeaderProps {
   showHistorySidebar?: boolean;
   showChatSettingsSidebar?: boolean;
   showNewChatButton?: boolean;
+  onOpenGlobalSettings?: () => void;
 }
 
 const Header = memo(
   ({
     showHistorySidebar = true,
     showChatSettingsSidebar = true,
-    showNewChatButton = true
+    showNewChatButton = true,
+    onOpenGlobalSettings
   }: HeaderProps) => {
     const { audioConnection } = useAudio();
     const navigate = useNavigate();
     const { data } = useAuth();
     const { config } = useConfig();
+    const { t } = useTranslation();
     const { chatSettingsInputs } = useChatData();
     const { open, openMobile, isMobile } = useSidebar();
     const setChatSettingsSidebarOpen = useSetRecoilState(
@@ -101,6 +106,25 @@ const Header = memo(
         <div />
         <div className="flex items-center gap-1">
           <ShareButton />
+          {onOpenGlobalSettings ? (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  id="harness-settings-header-button"
+                  onClick={onOpenGlobalSettings}
+                  variant="ghost"
+                  size="icon"
+                  className="text-muted-foreground hover:text-muted-foreground"
+                  aria-label={t('harnessSettings.title')}
+                >
+                  <Settings2 className="!size-5" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <Translator path="harnessSettings.title" />
+              </TooltipContent>
+            </Tooltip>
+          ) : null}
           <ReadmeButton />
           <ApiKeys />
           {links &&

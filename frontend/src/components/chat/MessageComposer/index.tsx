@@ -7,7 +7,6 @@ import {
 } from 'react';
 import { useRecoilState, useRecoilValue, useSetRecoilState } from 'recoil';
 import { v4 as uuidv4 } from 'uuid';
-import { toast } from 'sonner';
 
 import {
   FileSpec,
@@ -48,7 +47,6 @@ import {
   attachmentsState,
   persistentCommandState
 } from 'state/chat';
-import { apiClient } from 'api';
 
 import { Attachments } from './Attachments';
 import CommandButtons from './CommandButtons';
@@ -99,7 +97,7 @@ export default function MessageComposer({
 
   const disabled = _disabled || !!attachments.find((a) => !a.uploaded);
   const permissionMode =
-    userEnv.inevery_permission_mode === 'bypass' ? 'bypass' : 'default';
+    userEnv.inevery_chat_permission_mode === 'bypass' ? 'bypass' : 'default';
 
   const { config } = useConfig();
   const showSettingsInComposer =
@@ -211,24 +209,15 @@ export default function MessageComposer({
   );
 
   const updatePermissionMode = useCallback(
-    async (permission_mode: 'default' | 'bypass') => {
+    (permission_mode: 'default' | 'bypass') => {
       setUserEnv((previous) => {
-        const next = { ...previous, inevery_permission_mode: permission_mode };
+        const next = {
+          ...previous,
+          inevery_chat_permission_mode: permission_mode
+        };
         localStorage.setItem('userEnv', JSON.stringify(next));
         return next;
       });
-      try {
-        const payload = await apiClient.updateInEverySettings({
-          permission_mode
-        });
-        setUserEnv((previous) => {
-          const next = { ...previous, ...payload.userEnv };
-          localStorage.setItem('userEnv', JSON.stringify(next));
-          return next;
-        });
-      } catch (error) {
-        toast.error(error instanceof Error ? error.message : String(error));
-      }
     },
     [setUserEnv]
   );

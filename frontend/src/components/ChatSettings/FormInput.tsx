@@ -1,4 +1,5 @@
 import { IInput } from 'types/Input';
+import { useTranslation } from 'components/i18n/Translator';
 
 import { CheckboxInput, CheckboxInputProps } from './CheckboxInput';
 import { DatePickerInput, DatePickerInputProps } from './DatePickerInput';
@@ -33,40 +34,106 @@ type TFormInput =
       IFormInput<'datepicker', string | [string, string]>);
 
 const FormInput = ({ element }: { element: TFormInput }): JSX.Element => {
-  switch (element?.type) {
+  const { i18n, t } = useTranslation();
+  const translatedElement = localizeChatSettingsInput(element, i18n, t);
+
+  switch (translatedElement?.type) {
     case 'select':
-      return <SelectInput {...element} value={element.value ?? ''} />;
+      return (
+        <SelectInput
+          {...translatedElement}
+          value={translatedElement.value ?? ''}
+        />
+      );
     case 'slider':
-      return <SliderInput {...element} value={element.value ?? 0} />;
+      return (
+        <SliderInput
+          {...translatedElement}
+          value={translatedElement.value ?? 0}
+        />
+      );
     case 'tags':
-      return <TagsInput {...element} value={element.value ?? []} />;
+      return (
+        <TagsInput
+          {...translatedElement}
+          value={translatedElement.value ?? []}
+        />
+      );
     case 'switch':
-      return <SwitchInput {...element} checked={!!element.value} />;
+      return (
+        <SwitchInput
+          {...translatedElement}
+          checked={!!translatedElement.value}
+        />
+      );
     case 'textinput':
-      return <TextInput {...element} value={element.value ?? ''} />;
+      return (
+        <TextInput
+          {...translatedElement}
+          value={translatedElement.value ?? ''}
+        />
+      );
     case 'numberinput':
       return (
         <TextInput
-          {...element}
+          {...translatedElement}
           type="number"
-          value={element.value?.toString() ?? '0'}
+          value={translatedElement.value?.toString() ?? '0'}
         />
       );
     case 'multiselect':
-      return <MultiSelectInput {...element} value={element.value ?? []} />;
+      return (
+        <MultiSelectInput
+          {...translatedElement}
+          value={translatedElement.value ?? []}
+        />
+      );
     case 'checkbox':
-      return <CheckboxInput {...element} checked={!!element.value} />;
+      return (
+        <CheckboxInput
+          {...translatedElement}
+          checked={!!translatedElement.value}
+        />
+      );
     case 'radio':
-      return <RadioButtonGroup {...element} value={element.value ?? ''} />;
+      return (
+        <RadioButtonGroup
+          {...translatedElement}
+          value={translatedElement.value ?? ''}
+        />
+      );
     case 'datepicker':
-      return <DatePickerInput {...element} value={element.value} />;
+      return (
+        <DatePickerInput
+          {...translatedElement}
+          value={translatedElement.value}
+        />
+      );
     default:
       // If the element type is not recognized, we indicate an unimplemented type.
       // This code path should not normally occur and serves as a fallback.
-      element satisfies never;
+      translatedElement satisfies never;
       return <></>;
   }
 };
+
+function localizeChatSettingsInput(
+  element: TFormInput,
+  i18n: ReturnType<typeof useTranslation>['i18n'],
+  t: ReturnType<typeof useTranslation>['t']
+): TFormInput {
+  const basePath = `chat.settings.inputs.${element.id}`;
+  const labelPath = `${basePath}.label`;
+  const descriptionPath = `${basePath}.description`;
+
+  return {
+    ...element,
+    label: i18n.exists(labelPath) ? t(labelPath) : element.label,
+    description: i18n.exists(descriptionPath)
+      ? t(descriptionPath)
+      : element.description
+  };
+}
 
 export { FormInput };
 export type { IFormInput, TFormInput, TFormInputValue };
